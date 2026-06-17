@@ -1,27 +1,23 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-  --primary: #7bc74d;
-  --primary-foreground: #ffffff;
-  --secondary: #f3f4f6;
-  --secondary-foreground: #171717;
-  --accent: #e9b949;
-  --accent-foreground: #171717;
-  --muted: #f9fafb;
-  --muted-foreground: #6b7280;
-  --card: #ffffff;
-  --card-foreground: #171717;
-  --border: #e5e7eb;
-  --gold: #e9b949;
-  --cream: #fff8e7;
-  --sky: #a8d8e8;
-  --meadow: #3e8e3e;
-  --glass-bg: rgba(255, 255, 255, 0.6);
-  --glass-border: rgba(0, 0, 0, 0.08);
-  --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.08);
-  --shadow-glow: 0 0 20px rgba(233, 185, 73, 0.3);
+  --background: #050505;
+  --foreground: #ffffff;
+  --primary: #e5e5e5;
+  --primary-foreground: #050505;
+  --secondary: #262626;
+  --secondary-foreground: #ffffff;
+  --accent: #e2ff44;
+  --accent-foreground: #050505;
+  --muted: #171717;
+  --muted-foreground: #a3a3a3;
+  --card: #171717;
+  --card-foreground: #ffffff;
+  --border: #262626;
+  --glass-bg: rgba(5, 5, 5, 0.6);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+  --shadow-glow: 0 0 20px rgba(226, 255, 68, 0.3);
 }
 
 @theme inline {
@@ -38,10 +34,6 @@
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
   --color-border: var(--border);
-  --color-gold: var(--gold);
-  --color-cream: var(--cream);
-  --color-sky: var(--sky);
-  --color-meadow: var(--meadow);
   --font-sans: var(--font-poppins);
   --font-display: var(--font-syne);
 }
@@ -86,7 +78,7 @@ body {
 }
 
 .glass-button:hover {
-  background: rgba(255, 255, 255, 0.8);
-  box-shadow: 0 0 30px rgba(233, 185, 73, 0.5);
+  background: rgba(226, 255, 68, 0.15);
+  border-color: rgba(226, 255, 68, 0.3);
+  box-shadow: 0 0 30px rgba(226, 255, 68, 0.4);
 }
-
