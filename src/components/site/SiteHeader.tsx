@@ -1,18 +1,32 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const navLinks = [
   { href: "/", label: "Home" },
-  { href: "/about", label: "About" },
   { href: "/projects", label: "Projects" },
-  { href: "/services", label: "Services" },
+  { href: "/test", label: "Test" },
   { href: "/contact", label: "Contact" },
 ];
 
 export default function SiteHeader() {
   const pathname = usePathname();
+  const [theme, setTheme] = useState<"dark" | "light">("dark");
+
+  useEffect(() => {
+    const saved = localStorage.getItem("theme") as "dark" | "light" | null;
+    if (saved) setTheme(saved);
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("theme", theme);
+  }, [theme]);
+
+  const toggleTheme = () =>
+    setTheme((prev) => (prev === "dark" ? "light" : "dark"));
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 px-4 py-3">
@@ -41,6 +55,13 @@ export default function SiteHeader() {
               </Link>
             );
           })}
+          <button
+            onClick={toggleTheme}
+            className="px-3 py-1.5 rounded-full text-sm font-medium transition-colors text-foreground/70 hover:text-foreground hover:bg-white/10"
+            aria-label="Toggle theme"
+          >
+            {theme === "dark" ? "\u2600\uFE0F" : "\uD83C\uDF19"}
+          </button>
         </nav>
       </div>
     </header>

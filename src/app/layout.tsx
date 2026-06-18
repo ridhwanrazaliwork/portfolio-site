@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
-import { Syne, Poppins } from "next/font/google";
+import { Syne, Poppins, Hanken_Grotesk, JetBrains_Mono } from "next/font/google";
 import SiteHeader from "@/components/site/SiteHeader";
+import PageTransition from "@/components/site/PageTransition";
 import "./globals.css";
 
 const syne = Syne({
@@ -13,6 +14,18 @@ const poppins = Poppins({
   variable: "--font-poppins",
   subsets: ["latin"],
   weight: ["300", "400", "500", "600", "700"],
+});
+
+const hanken = Hanken_Grotesk({
+  variable: "--font-hanken",
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "600", "700"],
+});
+
+const jetbrains = JetBrains_Mono({
+  variable: "--font-jetbrains",
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
 });
 
 export const metadata: Metadata = {
@@ -38,11 +51,11 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${syne.variable} ${poppins.variable} antialiased`}
+      className={`${syne.variable} ${poppins.variable} ${hanken.variable} ${jetbrains.variable} antialiased`}
     >
       <body className="min-h-screen flex flex-col">
         <SiteHeader />
-        <main className="flex-1">{children}</main>
+        <PageTransition>{children}</PageTransition>
       </body>
     </html>
   );
