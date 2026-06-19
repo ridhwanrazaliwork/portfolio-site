@@ -1,10 +1,10 @@
 import Image from "next/image";
 import type { Metadata } from "next";
-import echolabImg from "@/images/projects/echolab.png";
-import gcpDataMgmtImg from "@/images/projects/gcp-data-mgmt.png";
-import agenticMedicalImg from "@/images/projects/agentic-medical.png";
-import gcpHealthcareImg from "@/images/projects/gcp-healthcare.png";
-import lowlightYoloImg from "@/images/projects/lowlight-yolo.png";
+import echolabImg from "@/images/projects/echolab.webp";
+import gcpDataMgmtImg from "@/images/projects/gcp-data-mgmt.webp";
+import agenticMedicalImg from "@/images/projects/agentic-medical.webp";
+import gcpHealthcareImg from "@/images/projects/gcp-healthcare.webp";
+import lowlightYoloImg from "@/images/projects/lowlight-yolo.webp";
 
 export const metadata: Metadata = {
   title: "Projects",
@@ -95,7 +95,8 @@ export default function ProjectsPage() {
                   alt={project.title}
                   width={500}
                   height={281}
-                  priority={i === 0}
+                  priority={i < 2}
+                  sizes="(max-width: 768px) calc(100vw - 2rem), 500px"
                   className="w-full h-full object-cover object-top transition-transform duration-500 group-hover:scale-105"
                 />
               </div>
