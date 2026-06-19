@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Hanken_Grotesk, JetBrains_Mono } from "next/font/google";
-import profileImg from "@/images/home/llama_hi.png";
+import profileImg from "@/images/home/ridhwan_hi.jpeg";
 import footerSvg from "@/images/home/llama_footer.png";
 
 const education = [
