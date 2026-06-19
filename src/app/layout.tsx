@@ -30,15 +30,15 @@ const jetbrains = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "Ridhwan | Dimensional Design for the Digital Age",
+    default: "Ridhwan | Portfolio",
     template: "%s | Ridhwan",
   },
   description:
-    "Ridhwan — developer exploring 3D web, design, and creative code.",
+    "Ridhwan — developer exploring data :).",
   openGraph: {
     title: "Ridhwan | Portfolio",
     description:
-      "Ridhwan — developer exploring 3D web, design, and creative code.",
+      "Ridhwan — developer exploring data :).",
     type: "website",
   },
 };
@@ -52,7 +52,20 @@ export default function RootLayout({
     <html
       lang="en"
       className={`${syne.variable} ${poppins.variable} ${hanken.variable} ${jetbrains.variable} antialiased`}
+      suppressHydrationWarning
     >
+      <head>
+        <script dangerouslySetInnerHTML={{
+          __html: `
+            (function() {
+              try {
+                var theme = localStorage.getItem("theme");
+                if (theme) document.documentElement.setAttribute("data-theme", theme);
+              } catch(e) {}
+            })();
+          `
+        }} />
+      </head>
       <body className="min-h-screen flex flex-col">
         <SiteHeader />
         <PageTransition>{children}</PageTransition>
