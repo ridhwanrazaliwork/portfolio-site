@@ -17,7 +17,7 @@
   --card: #171717;
   --card-foreground: #ffffff;
   --border: #262626;
-  --glass-bg: rgba(5, 5, 5, 0.6);
+  --glass-bg: rgba(5, 5, 5, 0.9);
   --glass-border: rgba(255, 255, 255, 0.08);
   --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
   --shadow-glow: 0 0 20px oklch(95% 0.15 108 / 0.3);
@@ -38,7 +38,7 @@
   --color-card-foreground: var(--card-foreground);
   --color-border: var(--border);
   --font-sans: var(--font-poppins);
-  --font-display: var(--font-syne);
+  --font-display: var(--font-poppins);
 }
 
 html {
@@ -107,7 +107,7 @@ body {
   --card: #ffffff;
   --card-foreground: #0a0a0a;
   --border: #e5e5e5;
-  --glass-bg: rgba(255, 255, 255, 0.7);
+  --glass-bg: rgba(255, 255, 255, 0.9);
   --glass-border: rgba(0, 0, 0, 0.08);
   --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.08);
   --shadow-glow: 0 0 20px oklch(55% 0.2 108 / 0.2);

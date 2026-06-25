@@ -1,14 +1,9 @@
 import type { Metadata } from "next";
-import { Syne, Poppins, Hanken_Grotesk, JetBrains_Mono } from "next/font/google";
+import { Poppins, Hanken_Grotesk, JetBrains_Mono } from "next/font/google";
 import SiteHeader from "@/components/site/SiteHeader";
 import PageTransition from "@/components/site/PageTransition";
+import ChatWidget from "@/components/chat/ChatWidget";
 import "./globals.css";
-
-const syne = Syne({
-  variable: "--font-syne",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800"],
-});
 
 const poppins = Poppins({
   variable: "--font-poppins",
@@ -51,7 +46,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${syne.variable} ${poppins.variable} ${hanken.variable} ${jetbrains.variable} antialiased`}
+      className={`${poppins.variable} ${hanken.variable} ${jetbrains.variable} antialiased`}
       suppressHydrationWarning
     >
       <head>
@@ -69,6 +64,7 @@ export default function RootLayout({
       <body className="min-h-screen flex flex-col">
         <SiteHeader />
         <PageTransition>{children}</PageTransition>
+        <ChatWidget />
       </body>
     </html>
   );

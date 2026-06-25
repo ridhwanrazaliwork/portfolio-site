@@ -4,7 +4,6 @@ import { useState } from "react";
 import Link from "next/link";
 import { Hanken_Grotesk, JetBrains_Mono } from "next/font/google";
 import profileImg from "@/images/home/ridhwan_hi.jpeg";
-import footerSvg from "@/images/home/llama_footer.png";
 
 const education = [
   {
@@ -166,7 +165,6 @@ export default function TestPage() {
       <div
         style={{
           "--font-sans": "var(--font-hanken)",
-          "--font-syne": "var(--font-hanken)",
           "--font-mono": "var(--font-jetbrains)",
         } as React.CSSProperties}
       >
@@ -414,11 +412,6 @@ export default function TestPage() {
         </section>
 
         <footer className="relative py-32 px-4 overflow-hidden">
-          <img
-            src={footerSvg.src}
-            alt=""
-            className="absolute bottom-6 right-6 w-20 h-20 md:w-24 md:h-24 opacity-[0.1] pointer-events-none"
-          />
 
           <div className="relative z-10 max-w-4xl mx-auto text-center">
             <h2

@@ -38,7 +38,7 @@ export default function SiteHeader() {
         <Link
           href="/"
           className="text-2xl font-bold tracking-tight"
-          style={{ fontFamily: "var(--font-syne)" }}
+          style={{ fontFamily: "var(--font-poppins)" }}
         >
           <span className="md:hidden">Rid</span>
           <span className="hidden md:inline">Ridhwan</span>

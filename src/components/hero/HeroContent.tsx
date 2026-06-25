@@ -5,7 +5,7 @@ export default function HeroContent() {
     <div className="relative z-10 flex flex-col items-center justify-center min-h-screen text-center px-4 pt-20 pointer-events-none">
       <h1
         className="text-5xl md:text-7xl lg:text-8xl font-extrabold tracking-tight max-w-4xl leading-tight pointer-events-none"
-        style={{ fontFamily: "var(--font-syne)" }}
+        style={{ fontFamily: "var(--font-poppins)" }}
       >
         Some random words here
       </h1>

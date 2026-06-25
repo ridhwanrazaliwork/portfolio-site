@@ -75,7 +75,7 @@ export default function ProjectsPage() {
       <div className="max-w-6xl mx-auto">
         <h1
           className="text-3xl md:text-4xl lg:text-5xl font-bold mb-4 text-center text-foreground"
-          style={{ fontFamily: "var(--font-syne)", letterSpacing: "-0.02em" }}
+          style={{ fontFamily: "var(--font-poppins)", letterSpacing: "-0.02em" }}
         >
           Projects
         </h1>
@@ -103,7 +103,7 @@ export default function ProjectsPage() {
               <div className="flex flex-col flex-1 mt-4">
                 <h3
                   className="text-lg font-semibold text-foreground"
-                  style={{ fontFamily: "var(--font-syne)" }}
+                  style={{ fontFamily: "var(--font-poppins)" }}
                 >
                   {project.title}
                 </h3>

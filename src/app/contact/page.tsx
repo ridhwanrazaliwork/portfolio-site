@@ -15,7 +15,7 @@ export default function ContactPage() {
       <div className="glass-panel p-10 md:p-12 max-w-lg w-full text-center">
         <h1
           className="text-4xl font-bold mb-2 text-foreground"
-          style={{ fontFamily: "var(--font-syne)", letterSpacing: "-0.02em" }}
+          style={{ fontFamily: "var(--font-poppins)", letterSpacing: "-0.02em" }}
         >
           Get in Touch
         </h1>
