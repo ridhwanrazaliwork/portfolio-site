@@ -14,7 +14,7 @@ export default function ChatToggle({
   return (
     <button
       onClick={onClick}
-      className="glass-button !p-0 w-14 h-14 rounded-full flex items-center justify-center text-xl relative shadow-lg transition-all duration-200 hover:scale-105 active:scale-95"
+      className="glass-button !p-0 w-14 h-14 !rounded-full flex items-center justify-center text-xl relative shadow-lg transition-all duration-200 hover:shadow-[0_0_15px_var(--accent-glow)]"
       aria-label={isOpen ? "Close chat" : "Open chat"}
     >
       {isOpen ? (

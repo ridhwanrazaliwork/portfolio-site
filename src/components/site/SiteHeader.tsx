@@ -62,7 +62,7 @@ export default function SiteHeader() {
         <div className="flex items-center gap-2">
           <Link
             href="/"
-            className="text-2xl font-bold tracking-tight"
+            className="text-2xl font-bold tracking-tight transition-all duration-300 hover:text-accent hover:[text-shadow:0_0_20px_var(--accent-glow)]"
             style={{ fontFamily: "var(--font-poppins)" }}
           >
             <span className="md:hidden">Rid</span>

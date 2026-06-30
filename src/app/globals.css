@@ -85,6 +85,14 @@ body {
 }
 
 .glass-button:hover {
+  transform: scale(1.05);
+}
+
+.glass-button:active {
+  transform: scale(0.95);
+}
+
+.glass-button:hover {
   background: var(--accent-15);
   border-color: var(--accent-30);
   box-shadow: 0 0 30px var(--accent-glow);

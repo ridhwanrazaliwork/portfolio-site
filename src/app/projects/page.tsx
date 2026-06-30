@@ -1,6 +1,6 @@
 import Image from "next/image";
 import type { Metadata } from "next";
-import echolabImg from "@/images/projects/echolab.webp";
+import readmeragImg from "@/images/projects/ReadmeRag.png";
 import gcpDataMgmtImg from "@/images/projects/gcp-data-mgmt.webp";
 import agenticMedicalImg from "@/images/projects/agentic-medical.webp";
 import gcpHealthcareImg from "@/images/projects/gcp-healthcare.webp";
@@ -17,12 +17,12 @@ export const metadata: Metadata = {
 
 const projects = [
   {
-    title: "EchoLab \u2014 AI-Powered Speaking Coach Playground",
+    title: "ReadmeRag \u2014 RAG Chatbot for GitHub Projects",
     description:
-      " Ongoing Full-stack app with real-time camera/audio analysis (Mediapipe, STT/TTS) for posture, eye contact, and speech metrics. Features an AI resume checker and rewriter.",
-    tech: ["Next.js", "Firebase", "Mediapipe", "Azure OpenAI", "Tailwind CSS"],
-    img: echolabImg,
-    github: "https://github.com/ridhwanrazaliwork/EchoLab",
+      "A lightweight, zero-cost RAG (Retrieval-Augmented Generation) chatbot that answers questions about a developer's GitHub projects. It fetches README files from a GitHub profile, indexes them in a local vector database, and uses a free-tier LLM to answer questions.",
+    tech: ["embeddings", "gemini-api", "rag", "llm", "chromadb", "openrouter", "litellm"],
+    img: readmeragImg,
+    github: "https://github.com/ridhwanrazaliwork/readmerag",
   },
   {
     title: "End-to-End GCP Big Data Healthcare Pipeline",
@@ -87,7 +87,7 @@ export default function ProjectsPage() {
           {projects.map((project, i) => (
             <div
               key={i}
-              className="group glass-panel rounded-2xl p-7 flex flex-col h-full"
+              className="group glass-panel rounded-2xl p-7 flex flex-col h-full transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_0_30px_var(--accent-glow)] hover:border-accent/30"
             >
               <div className="w-full aspect-video rounded-xl overflow-hidden relative bg-neutral-900 shadow-md">
                 <Image

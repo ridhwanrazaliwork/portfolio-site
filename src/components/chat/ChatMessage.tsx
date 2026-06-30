@@ -12,7 +12,6 @@ interface ChatMessageProps {
 export default function ChatMessage({
   role,
   content,
-  sources,
   isStreaming,
 }: ChatMessageProps) {
   const isUser = role === "user";
@@ -32,25 +31,6 @@ export default function ChatMessage({
             <span className="inline-block w-[2px] h-4 bg-accent ml-0.5 animate-pulse" />
           )}
         </p>
-        {sources && sources.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mt-2 pt-2 border-t border-white/[0.06]">
-            <span
-              className="text-[10px] text-[#737373] uppercase tracking-wider mr-0.5"
-              style={{ fontFamily: "var(--font-jetbrains)" }}
-            >
-              Sources:
-            </span>
-            {sources.map((s, i) => (
-              <span
-                key={i}
-                className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-accent/10 text-accent/90 border border-accent/20"
-                style={{ fontFamily: "var(--font-jetbrains)" }}
-              >
-                {s.repo}
-              </span>
-            ))}
-          </div>
-        )}
       </div>
     </div>
   );

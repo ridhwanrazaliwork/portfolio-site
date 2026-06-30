@@ -143,7 +143,11 @@ export default function ChatWidget() {
             initial={{ opacity: 0, y: 20, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.95 }}
-            transition={{ duration: 0.15, ease: "easeOut" }}
+            transition={{
+              opacity: { duration: 0.2 },
+              y: { type: "spring", stiffness: 400, damping: 25 },
+              scale: { type: "spring", stiffness: 400, damping: 25 },
+            }}
             className="glass-panel w-[380px] max-w-[calc(100vw-2rem)] max-h-[520px] flex flex-col overflow-hidden origin-bottom-right"
           >
             <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.05] shrink-0">
@@ -169,13 +173,13 @@ export default function ChatWidget() {
                     className="text-sm font-semibold text-foreground"
                     style={{ fontFamily: "var(--font-poppins)" }}
                   >
-                    Chat with my READMEs
+                    Rchat
                   </p>
                   <p
                     className="text-[10px] text-[#737373]"
                     style={{ fontFamily: "var(--font-jetbrains)" }}
                   >
-                    Ask me anything about my work
+                    Ask me anything about Ridhwan
                   </p>
                 </div>
               </div>
@@ -183,28 +187,10 @@ export default function ChatWidget() {
 
             <div className="flex-1 overflow-y-auto px-4 py-3 space-y-1 scroll-smooth">
               {messages.length === 0 && (
-                <div className="flex flex-col items-center justify-center h-full text-center py-8">
-                  <div className="w-12 h-12 rounded-full bg-accent/10 flex items-center justify-center mb-3">
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="20"
-                      height="20"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className="text-accent/70"
-                    >
-                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                    </svg>
-                  </div>
-                  <p className="text-sm text-[#a3a3a3] max-w-[220px]">
-                    Ask me anything about Ridhwan&apos;s projects, skills, or
-                    experience!
-                  </p>
-                </div>
+                <ChatMessage
+                  role="assistant"
+                  content={"Hi there \u{1F44B}\nHow can I help?"}
+                />
               )}
               {messages.map((msg) => (
                 <ChatMessage
@@ -254,7 +240,7 @@ export default function ChatWidget() {
                 <button
                   onClick={handleSubmit}
                   disabled={!input.trim() || isStreaming || (rateLimitedUntil !== null && countdown > 0)}
-                  className="w-9 h-9 rounded-xl bg-accent/20 flex items-center justify-center text-accent hover:bg-accent/30 transition-colors disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
+                  className="w-9 h-9 rounded-xl bg-accent/20 flex items-center justify-center text-accent hover:bg-accent/30 transition-all duration-200 hover:scale-105 active:scale-95 hover:shadow-[0_0_15px_var(--accent-glow)] disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
                   aria-label="Send"
                 >
                   {isStreaming ? (
