@@ -63,6 +63,12 @@ export default function RootLayout({
         }} />
       </head>
       <body className="min-h-screen flex flex-col">
+        <div id="initial-loader">
+          <span style={{ fontFamily: "var(--font-poppins)", fontSize: "1.5rem", fontWeight: 600, color: "var(--foreground)" }}>
+            Ridhwan
+          </span>
+          <div className="loader-dot" />
+        </div>
         <SiteHeader />
         <ViewTransitionWrapper>
           <PageTransition>{children}</PageTransition>

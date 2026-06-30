@@ -8,28 +8,27 @@ import { usePathname } from "next/navigation";
 const navLinks = [
   { href: "/", label: "Home" },
   { href: "/projects", label: "Projects" },
-  { href: "/contact", label: "Contact" },
 ];
 
 export default function SiteHeader() {
   const pathname = usePathname();
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const [theme, setTheme] = useState<"dark" | "light">(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem("theme") as "dark" | "light" | null;
+      return saved || "dark";
+    }
+    return "dark";
+  });
   const [mobileOpen, setMobileOpen] = useState(false);
   const toggleRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    const saved = localStorage.getItem("theme") as "dark" | "light" | null;
-    if (saved) setTheme(saved);
-  }, []);
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
     localStorage.setItem("theme", theme);
   }, [theme]);
 
-  useEffect(() => {
-    setMobileOpen(false);
-  }, [pathname]);
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { setMobileOpen(false); }, [pathname]);
 
   const toggleTheme = useCallback(() => {
     const rect = toggleRef.current?.getBoundingClientRect();
