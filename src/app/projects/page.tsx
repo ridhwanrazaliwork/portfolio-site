@@ -56,6 +56,14 @@ const projects = [
     img: lowlightYoloImg,
     github: "https://github.com/ridhwanrazaliwork/LowLight-Object-Detection-Pipeline-WebApp",
   },
+  {
+    title: "DermAI — Skin Lesion Classification",
+    description:
+      "Flask-based web app for classifying skin lesions using ML models. Supports CNN, EfficientNet, and CNN+Metadata models. Upload images, choose models, and view predictions with confidence scores.",
+    tech: ["Python", "Flask", "PyTorch", "Docker", "Google Cloud"],
+    img: readmeragImg,  // TODO: replace with actual DermAI image
+    github: "https://github.com/ridhwanrazaliwork/DermAI",
+  },
 ];
 
 function TechBadge({ label }: { label: string }) {

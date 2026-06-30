@@ -12,6 +12,8 @@ const education = [
     period: "2024 - Present",
     description:
       "Focus: Deep Learning, Big Data Analytics, and Cloud Computing. CGPA: 3.87/4.00.",
+    thesis: "Low Light Object Detection with YOLO",
+    coursework: "Machine Learning for Data Science, Big Data Applications & Analytics, Data Mining, Programming for Data Science",
     status: "Active",
   },
   {
@@ -55,7 +57,7 @@ const featuredProjects = [
   {
     title: "ReadmeRag — RAG Chatbot for GitHub Projects",
     description:
-      "A lightweight, zero-cost RAG (Retrieval-Augmented Generation) chatbot that answers questions about a developer's GitHub projects. It fetches README files from a GitHub profile, indexes them in a local vector database, and uses a free-tier LLM to answer questions.",
+      "A RAG chatbot that lets anyone ask questions about my work by pulling from my GitHub READMEs. Instead of a static portfolio, visitors can query my projects, skills, and experience naturally.",
     tech: ["embeddings", "gemini-api", "rag", "llm", "chromadb", "openrouter", "litellm"],
     github: "https://github.com/ridhwanrazaliwork/readmerag",
   },
@@ -68,22 +70,45 @@ const featuredProjects = [
   },
 ];
 
-const certifications = [
-  {
-    name: "MLOps Bootcamp",
-    issuer: "MLflow, Airflow, Docker, GitHub Actions CI/CD",
-    year: "2026",
-  },
+const featuredCerts = [
+  { name: "MLOps Bootcamp", issuer: "MLflow, Airflow, Docker, GitHub Actions CI/CD", year: "2026" },
   {
     name: "Google Cloud Data Analytics Certificate",
     issuer: "BigQuery, SQL on GCP, Looker Studio",
     year: "2025",
+    link: "https://www.credly.com/badges/85768225-9c63-48ee-91f7-3b056c6116cc/public_url",
+  },
+  { name: "Data Engineering using AWS Data Analytics", issuer: "Udemy — S3, Glue, Redshift, Athena", year: "2023" },
+];
+
+const otherCerts = [
+  {
+    name: "The Complete Full-Stack Web Development Bootcamp", issuer: "Udemy",
+    year: "2025",
+    link: "https://www.udemy.com/certificate/UC-df53cf97-6bfb-4112-80a9-08f91ed344ff/",
   },
   {
-    name: "Data Engineering using AWS Data Analytics",
-    issuer: "Udemy \u2014 S3, Glue, Redshift, Athena",
-    year: "2023",
+    name: "PyTorch for Deep Learning Bootcamp", issuer: "Zero to Mastery",
+    year: "2024",
+    link: "https://www.udemy.com/certificate/UC-8f34eab4-ca85-4563-9143-3d418709075b/",
   },
+  {
+    name: "TensorFlow for Deep Learning Bootcamp", issuer: "Zero to Mastery",
+    year: "2024",
+    link: "https://www.udemy.com/certificate/UC-1679c1f9-0e48-4a7a-bc2f-34302e60ab2b/",
+  },
+  {
+    name: "Mastering React & Node.js Firebase Authentication", issuer: "Udemy",
+    year: "2024",
+    link: "https://www.udemy.com/certificate/UC-c006a6db-1f94-4a53-9a90-082b35a9615d/",
+  },
+];
+
+const techPillars = [
+  { icon: "☁️", title: "Cloud & Data Engineering", skills: ["AWS", "GCP", "Azure", "Spark", "Hadoop", "Hive", "Dataproc", "Glue"] },
+  { icon: "🤖", title: "AI & Machine Learning", skills: ["PyTorch", "TensorFlow", "MLflow", "scikit-learn", "Pandas", "NumPy", "Matplotlib", "Python", "R"] },
+  { icon: "💻", title: "Full-Stack & APIs", skills: ["Next.js", "FastAPI", "Node.js", "TypeScript", "React", "Tailwind CSS", "JavaScript", "HTML5", "Streamlit"] },
+  { icon: "🛠️", title: "Databases & DevOps", skills: ["PostgreSQL", "MongoDB", "Docker", "DynamoDB", "MSSQL", "MySQL", "Supabase", "GitHub Actions", "Git", "Jira", "Bitbucket"] },
 ];
 
 function StatusBadge({ status }: { status: string }) {
@@ -175,14 +200,32 @@ export default function HomePage() {
       <section className="pt-28 pb-16 px-4">
         <div className="max-w-5xl mx-auto space-y-6">
           <div className="glass-panel p-6 md:p-10 flex flex-col md:flex-row items-center gap-8 transition-all duration-300 hover:shadow-[0_0_30px_var(--accent-glow)] hover:border-accent/30">
-            <div className="relative w-32 h-32 md:w-40 md:h-40 rounded-full overflow-hidden border-2 border-white/[0.08] shrink-0 shadow-lg">
-              <Image
-                src={profileImg}
-                alt="Ridhwan"
-                fill
-                sizes="(max-width: 768px) 128px, 160px"
-                className="object-cover"
+            <div className="group relative w-32 h-32 md:w-40 md:h-40 shrink-0">
+              <div
+                style={{
+                  borderColor: "var(--accent) var(--accent) var(--accent) transparent",
+                  width: "calc(100% + 6px)", height: "calc(100% + 6px)",
+                  top: "-3px", left: "-3px",
+                }}
+                className="absolute rounded-full border transition-transform duration-[1.5s] ease-in-out group-hover:rotate-[360deg]"
               />
+              <div
+                style={{
+                  borderColor: "var(--accent) transparent var(--accent) var(--accent)",
+                  width: "calc(100% + 12px)", height: "calc(100% + 12px)",
+                  top: "-6px", left: "-6px",
+                }}
+                className="absolute rounded-full border transition-transform duration-[1.5s] ease-in-out group-hover:-rotate-[360deg]"
+              />
+              <div className="relative w-full h-full rounded-full overflow-hidden border-2 border-white/[0.08] shadow-lg">
+                <Image
+                  src={profileImg}
+                  alt="Ridhwan"
+                  fill
+                  sizes="(max-width: 768px) 128px, 160px"
+                  className="object-cover"
+                />
+              </div>
             </div>
             <div className="flex-1 text-center md:text-left">
               <h1
@@ -192,11 +235,22 @@ export default function HomePage() {
                 Hi, I&apos;m <span className="text-accent">Ridhwan</span>
               </h1>
               <p className="mt-2 text-lg md:text-xl text-[#a3a3a3]">
-                Data Engineer &amp; ML Explorer
+                Data Engineer with 2 years experience, finishing MSc in Data Science. Looking for data or ML/AI engineering roles.
               </p>
               <p className="mt-1 text-sm text-[#737373]" style={{ fontFamily: "var(--font-jetbrains)" }}>
                 {age} years old &middot; Kuala Lumpur, MY
               </p>
+              <div
+                className="inline-flex items-center gap-2 mt-3 px-3 py-1.5 rounded-full border border-accent/20 bg-accent/5 text-xs overflow-hidden max-w-[260px]"
+                style={{ fontFamily: "var(--font-jetbrains)" }}
+              >
+                <span className="text-accent shrink-0">🧑‍💻</span>
+                <div className="overflow-hidden whitespace-nowrap">
+                  <span className="inline-block animate-marquee">
+                    Studying: Azure certifications · Expanding cloud expertise &nbsp;&nbsp;·&nbsp;&nbsp; Studying: Azure certifications
+                  </span>
+                </div>
+              </div>
               <div className="mt-5 flex flex-wrap items-center gap-3 justify-center md:justify-start">
                 <ContactPill href="mailto:ridhwanrazaliwork@gmail.com" label="Email">
                   <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -234,8 +288,38 @@ export default function HomePage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 ">
             <StatChip icon="📍" label="Location" value="Kuala Lumpur, MY" />
             <StatChip icon="🎓" label="Education" value="Universiti Malaya" />
-            <StatChip icon="⚡" label="Current Role" value="Freelance AI Evaluator" />
-            <StatChip icon="🟢" label="Availability" value="Looking for opportunities" />
+            <StatChip icon="⚡" label="Current Role" value="Postgraduate Student" />
+            <StatChip icon="🟢" label="Availability" value="Open to new roles" />
+          </div>
+        </div>
+      </section>
+
+      {/* ─── TECH STACK ─── */}
+      <section className="pb-24 px-4">
+        <div className="max-w-6xl mx-auto space-y-6">
+          <h2
+            className="text-3xl md:text-4xl font-bold text-center text-foreground"
+            style={{ letterSpacing: "-0.02em" }}
+          >
+            Tech Stack
+          </h2>
+          <p className="text-[#a3a3a3] text-center max-w-xl mx-auto text-base md:text-lg">
+            Languages, tools, and technologies I work with.
+          </p>
+          <div className="grid md:grid-cols-2 gap-6">
+            {techPillars.map((p) => (
+              <BentoCard key={p.title}>
+                <div className="flex items-center gap-3 mb-4">
+                  <span className="text-xl">{p.icon}</span>
+                  <h3 className="text-base font-semibold text-foreground">{p.title}</h3>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {p.skills.map((s) => (
+                    <TechBadge key={s} label={s} />
+                  ))}
+                </div>
+              </BentoCard>
+            ))}
           </div>
         </div>
       </section>
@@ -314,6 +398,16 @@ export default function HomePage() {
                     <p className="text-[#a3a3a3] text-sm leading-relaxed">
                       {"\u276F"} {item.description}
                     </p>
+                    {"thesis" in item && item.thesis && (
+                      <p className="text-[#a3a3a3] text-sm mt-2">
+                        <span className="text-foreground/80 font-medium">Thesis:</span> {item.thesis}
+                      </p>
+                    )}
+                    {"coursework" in item && item.coursework && (
+                      <p className="text-[#a3a3a3] text-xs mt-1 leading-relaxed">
+                        <span className="text-foreground/80 font-medium">Key coursework:</span> {item.coursework}
+                      </p>
+                    )}
                   </div>
                 ))}
               </div>
@@ -392,7 +486,7 @@ export default function HomePage() {
           </p>
 
           <div className="grid md:grid-cols-2 gap-6">
-            {certifications.map((cert, i) => (
+            {featuredCerts.map((cert, i) => (
               <BentoCard key={i} className="flex items-start gap-5">
                 <div className="w-12 h-12 rounded-xl bg-accent/20 flex items-center justify-center shrink-0">
                   <span
@@ -409,15 +503,52 @@ export default function HomePage() {
                   <p className="text-[#a3a3a3] text-sm mt-1">
                     {cert.issuer}
                   </p>
-                  <span
-                    className="inline-block mt-2 text-[11px] text-[#737373] bg-white/[0.06] px-2.5 py-1 rounded border border-white/[0.06]"
-                    style={{ fontFamily: "var(--font-jetbrains)" }}
-                  >
-                    {cert.year}
-                  </span>
+                  <div className="flex flex-wrap items-center gap-2 mt-2">
+                    <span
+                      className="inline-block text-[11px] text-[#737373] bg-white/[0.06] px-2.5 py-1 rounded border border-white/[0.06]"
+                      style={{ fontFamily: "var(--font-jetbrains)" }}
+                    >
+                      {cert.year}
+                    </span>
+                    {cert.link && (
+                      <a
+                        href={cert.link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-0.5 text-[11px] text-accent hover:underline"
+                        style={{ fontFamily: "var(--font-jetbrains)" }}
+                      >
+                        Verify ↗
+                      </a>
+                    )}
+                  </div>
                 </div>
               </BentoCard>
             ))}
+          </div>
+
+          <div className="glass-panel p-5 md:p-6">
+            <h3 className="text-sm font-semibold text-foreground mb-4">Other Certifications &amp; Coursework</h3>
+            <div className="space-y-2">
+              {otherCerts.map((cert, i) => (
+                <div key={i} className="flex flex-wrap items-baseline gap-x-2 text-sm">
+                  <span className="text-foreground/80">{cert.name}</span>
+                  <span className="text-[#737373] text-xs">— {cert.issuer}</span>
+                  <span className="text-[11px] text-[#737373]" style={{ fontFamily: "var(--font-jetbrains)" }}>({cert.year})</span>
+                  {cert.link && (
+                    <a
+                      href={cert.link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[11px] text-accent hover:underline"
+                      style={{ fontFamily: "var(--font-jetbrains)" }}
+                    >
+                      Verify ↗
+                    </a>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </section>
