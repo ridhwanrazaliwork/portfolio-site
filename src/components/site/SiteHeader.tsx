@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { flushSync } from "react-dom";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -14,6 +15,7 @@ export default function SiteHeader() {
   const pathname = usePathname();
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [mobileOpen, setMobileOpen] = useState(false);
+  const toggleRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const saved = localStorage.getItem("theme") as "dark" | "light" | null;
@@ -29,20 +31,54 @@ export default function SiteHeader() {
     setMobileOpen(false);
   }, [pathname]);
 
-  const toggleTheme = () =>
-    setTheme((prev) => (prev === "dark" ? "light" : "dark"));
+  const toggleTheme = useCallback(() => {
+    const rect = toggleRef.current?.getBoundingClientRect();
+    if (rect) {
+      const x = rect.left + rect.width / 2;
+      const y = rect.top + rect.height / 2;
+      document.documentElement.style.setProperty("--vt-x", `${x}px`);
+      document.documentElement.style.setProperty("--vt-y", `${y}px`);
+    }
+    document.documentElement.classList.add("vt-theme");
+
+    const newTheme = theme === "dark" ? "light" : "dark";
+
+    const transition = document.startViewTransition(() => {
+      flushSync(() => {
+        setTheme(newTheme);
+      });
+      document.documentElement.setAttribute("data-theme", newTheme);
+      localStorage.setItem("theme", newTheme);
+    });
+
+    transition.finished.then(() => {
+      document.documentElement.classList.remove("vt-theme");
+      document.documentElement.style.removeProperty("--vt-x");
+      document.documentElement.style.removeProperty("--vt-y");
+    });
+  }, [theme]);
 
   return (
     <header className="sticky top-0 z-50 px-4 py-3 bg-background/60 backdrop-blur-md border-b border-white/[0.05]">
       <div className="max-w-7xl mx-auto flex items-center justify-between">
-        <Link
-          href="/"
-          className="text-2xl font-bold tracking-tight"
-          style={{ fontFamily: "var(--font-poppins)" }}
-        >
-          <span className="md:hidden">Rid</span>
-          <span className="hidden md:inline">Ridhwan</span>
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/"
+            className="text-2xl font-bold tracking-tight"
+            style={{ fontFamily: "var(--font-poppins)" }}
+          >
+            <span className="md:hidden">Rid</span>
+            <span className="hidden md:inline">Ridhwan</span>
+          </Link>
+          <button
+            ref={toggleRef}
+            onClick={toggleTheme}
+            className="w-8 h-8 rounded-full flex items-center justify-center text-sm transition-colors hover:bg-white/10 text-foreground/70 hover:text-foreground"
+            aria-label="Toggle theme"
+          >
+            {theme === "dark" ? "\u2600\uFE0F" : "\uD83C\uDF19"}
+          </button>
+        </div>
 
         {/* Desktop nav */}
         <nav className="hidden md:flex glass-pill items-center gap-1 px-2 py-1.5">
@@ -62,13 +98,6 @@ export default function SiteHeader() {
               </Link>
             );
           })}
-          <button
-            onClick={toggleTheme}
-            className="px-3 py-1.5 rounded-full text-sm font-medium transition-colors text-foreground/70 hover:text-foreground hover:bg-white/10"
-            aria-label="Toggle theme"
-          >
-            {theme === "dark" ? "\u2600\uFE0F" : "\uD83C\uDF19"}
-          </button>
         </nav>
 
         {/* Mobile hamburger */}
@@ -101,12 +130,6 @@ export default function SiteHeader() {
                 </Link>
               );
             })}
-            <button
-              onClick={toggleTheme}
-              className="px-4 py-2.5 rounded-xl text-sm font-medium transition-colors text-foreground/70 hover:text-foreground hover:bg-white/10 text-left"
-            >
-              {theme === "dark" ? "\u2600\uFE0F  Light mode" : "\uD83C\uDF19  Dark mode"}
-            </button>
           </div>
         </div>
       )}

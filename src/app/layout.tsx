@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Poppins, Hanken_Grotesk, JetBrains_Mono } from "next/font/google";
 import SiteHeader from "@/components/site/SiteHeader";
 import PageTransition from "@/components/site/PageTransition";
+import ViewTransitionWrapper from "@/components/site/ViewTransitionWrapper";
 import ChatWidget from "@/components/chat/ChatWidget";
 import "./globals.css";
 
@@ -63,7 +64,9 @@ export default function RootLayout({
       </head>
       <body className="min-h-screen flex flex-col">
         <SiteHeader />
-        <PageTransition>{children}</PageTransition>
+        <ViewTransitionWrapper>
+          <PageTransition>{children}</PageTransition>
+        </ViewTransitionWrapper>
         <ChatWidget />
       </body>
     </html>

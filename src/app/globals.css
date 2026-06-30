@@ -126,3 +126,26 @@ body {
 [data-theme="light"] .glass-pill .hover\:bg-white\/10:hover {
   background: rgba(0, 0, 0, 0.05);
 }
+
+/* View Transitions — theme toggle only */
+html.vt-theme::view-transition-group(root) {
+  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+html.vt-theme::view-transition-new(root) {
+  mask:
+    url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><defs><filter id="blur"><feGaussianBlur stdDeviation="2"/></filter></defs><circle cx="0" cy="0" r="18" fill="white" filter="url(%23blur)"/></svg>')
+    var(--vt-x) var(--vt-y) / 0 no-repeat;
+  animation: vt-scale 1s;
+  animation-fill-mode: both;
+}
+
+html.vt-theme::view-transition-old(root) {
+  z-index: -1;
+}
+
+@keyframes vt-scale {
+  to {
+    mask-size: 350vmax;
+  }
+}
