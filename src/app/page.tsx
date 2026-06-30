@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Hanken_Grotesk, JetBrains_Mono } from "next/font/google";
+import Image from "next/image";
 import profileImg from "@/images/home/ridhwan_hi.jpeg";
 
 const education = [
@@ -68,6 +68,7 @@ const featuredProjects = [
   },
 ];
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const achievements = [
   {
     title: "SOTA on ExDARK Dataset",
@@ -170,10 +171,12 @@ export default function TestPage() {
       >
 <section className="relative min-h-screen flex flex-col items-center justify-center text-center px-4 pt-20">
           <div className="relative w-32 h-32 md:w-40 md:h-40 rounded-full overflow-hidden border-2 border-white/[0.08] mb-8 shadow-lg">
-            <img
-              src={profileImg.src}
+            <Image
+              src={profileImg}
               alt="Ridhwan"
-              className="w-full h-full object-cover"
+              fill
+              sizes="(max-width: 768px) 128px, 160px"
+              className="object-cover"
             />
           </div>
 
