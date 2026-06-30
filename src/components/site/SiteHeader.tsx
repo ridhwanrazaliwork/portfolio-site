@@ -12,15 +12,14 @@ const navLinks = [
 
 export default function SiteHeader() {
   const pathname = usePathname();
-  const [theme, setTheme] = useState<"dark" | "light">(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem("theme") as "dark" | "light" | null;
-      return saved || "dark";
-    }
-    return "dark";
-  });
+  const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [mobileOpen, setMobileOpen] = useState(false);
   const toggleRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    const saved = localStorage.getItem("theme") as "dark" | "light" | null;
+    if (saved) setTheme(saved); // eslint-disable-line react-hooks/set-state-in-effect
+  }, []);
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
