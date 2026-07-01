@@ -5,15 +5,15 @@ import Link from "next/link";
 import Image from "next/image";
 import { motion, useScroll, useTransform } from "framer-motion";
 import { MapPin, GraduationCap, Briefcase, Circle, Cloud, Brain, Code2, Database, BookOpen, Monitor, Cpu, Layers, Shield } from "lucide-react";
-import profileImg from "@/images/home/ridhwan.jpg";
-import umLogo from "@/images/home/um-logo.jpg";
-import astroLogo from "@/images/home/astro.png";
-import valuelabsLogo from "@/images/home/valuelabs.jpg";
-import partTimeLogo from "@/images/home/part-time.png";
-import gcpLogo from "@/images/home/google-cloud.png";
-import udemyLogo from "@/images/home/udemy.png";
-import readmeragImg from "@/images/projects/ReadmeRag.png";
-import gcpDataMgmtImg from "@/images/projects/gcp-data-mgmt.png";
+import profileImg from "@/images/home/ridhwan.webp";
+import umLogo from "@/images/home/um-logo.webp";
+import astroLogo from "@/images/home/astro.webp";
+import valuelabsLogo from "@/images/home/valuelabs.webp";
+import partTimeLogo from "@/images/home/part-time.webp";
+import gcpLogo from "@/images/home/google-cloud.webp";
+import udemyLogo from "@/images/home/udemy.webp";
+import readmeragImg from "@/images/projects/ReadmeRag.webp";
+import gcpDataMgmtImg from "@/images/projects/gcp-data-mgmt.webp";
 
 const education = [
   {
