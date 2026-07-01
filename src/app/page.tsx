@@ -1,9 +1,8 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { motion, useScroll, useTransform } from "framer-motion";
 import { MapPin, GraduationCap, Briefcase, Circle, Cloud, Brain, Code2, Database, BookOpen, Monitor, Cpu, Layers, Shield } from "lucide-react";
 import profileImg from "@/images/home/ridhwan.webp";
 import umLogo from "@/images/home/um-logo.webp";
@@ -225,19 +224,6 @@ export default function HomePage() {
     (new Date().getTime() - new Date("1999-10-25").getTime()) / 31557600000
   );
 
-  const heroRef = useRef<HTMLDivElement>(null);
-  const { scrollYProgress } = useScroll({
-    target: heroRef,
-    offset: ["start end", "end start"],
-  });
-  const shapeX = useTransform(scrollYProgress, [0, 1], [16, -16]);
-  const shapeY = useTransform(scrollYProgress, [0, 1], [16, -16]);
-  const groupOpacity = useTransform(scrollYProgress, [0, 0.3, 0.7, 1], [0.15, 0.5, 0.5, 0.15]);
-  const groupRotateY = useTransform(scrollYProgress, [0, 0.5, 1], [-6, 0, 6]);
-  const node1Rotate = useTransform(scrollYProgress, [0, 1], [-90, 90]);
-  const node2Rotate = useTransform(scrollYProgress, [0, 1], [60, -60]);
-  const node3Rotate = useTransform(scrollYProgress, [0, 1], [-45, 45]);
-
   return (
     <div
       style={{
@@ -248,34 +234,17 @@ export default function HomePage() {
       {/* ─── HERO BENTO ─── */}
       <section className="pt-28 pb-16 px-4">
         <div className="max-w-5xl mx-auto space-y-6">
-          <div ref={heroRef} className="glass-panel p-6 md:p-10 flex flex-col md:flex-row items-center gap-8 transition-all duration-300 hover:shadow-[0_0_30px_var(--accent-glow)] hover:border-accent/30 relative">
-            <motion.div
-              style={{ x: shapeX, y: shapeY, opacity: groupOpacity, rotateY: groupRotateY, perspective: 600 }}
-              className="absolute -right-8 -bottom-6 w-44 h-36 pointer-events-none z-0"
-            >
-              <svg viewBox="0 0 160 110" className="absolute inset-0 w-full h-full overflow-visible">
-                <line x1="142" y1="96" x2="60" y2="22" stroke="currentColor" strokeWidth="0.8" className="text-accent/10" />
-                <line x1="60" y1="22" x2="18" y2="56" stroke="currentColor" strokeWidth="0.8" className="text-accent/10" />
-              </svg>
-              <motion.svg
-                style={{ rotate: node1Rotate }}
-                className="absolute right-1 bottom-1 w-7 h-7"
-              >
-                <polygon points="0,28 14,0 28,28" fill="none" stroke="currentColor" strokeWidth="2" className="text-accent/40" />
-              </motion.svg>
-              <motion.svg
-                style={{ rotate: node2Rotate }}
-                className="absolute right-14 bottom-12 w-5 h-5"
-              >
-                <polygon points="0,20 10,0 20,20" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-accent/25" />
-              </motion.svg>
-              <motion.svg
-                style={{ rotate: node3Rotate }}
-                className="absolute right-24 bottom-20 w-4 h-4"
-              >
-                <polygon points="0,16 8,0 16,16" fill="none" stroke="currentColor" strokeWidth="1.2" className="text-accent/15" />
-              </motion.svg>
-            </motion.div>
+          <div className="glass-panel p-6 md:p-10 flex flex-col md:flex-row items-center gap-8 transition-all duration-300 hover:shadow-[0_0_30px_var(--accent-glow)] hover:border-accent/30 relative">
+            <div
+              className="absolute inset-0 pointer-events-none z-0 rounded-[15px]"
+              style={{
+                backgroundImage: `
+                  repeating-linear-gradient(0deg, transparent, transparent 33px, var(--glass-border) 33.6px, var(--glass-border) 34.6px),
+                  repeating-linear-gradient(60deg, transparent, transparent 29px, var(--glass-border) 29px, var(--glass-border) 30px),
+                  repeating-linear-gradient(120deg, transparent, transparent 29px, var(--glass-border) 29px, var(--glass-border) 30px)
+                `,
+              }}
+            />
             <div className="group relative w-32 h-32 md:w-40 md:h-40 shrink-0">
               <div
                 style={{
