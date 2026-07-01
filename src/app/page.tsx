@@ -1,9 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import profileImg from "@/images/home/ridhwan_hi.jpeg";
+import { motion, useScroll, useTransform } from "framer-motion";
+import { MapPin, GraduationCap, Briefcase, Circle, Cloud, Brain, Code2, Database, BookOpen } from "lucide-react";
+import profileImg from "@/images/home/ridhwan.jpg";
+import umLogo from "@/images/home/um-logo.jpg";
+import astroLogo from "@/images/home/astro.png";
+import valuelabsLogo from "@/images/home/valuelabs.jpg";
+import partTimeLogo from "@/images/home/part-time.png";
+import gcpLogo from "@/images/home/google-cloud.png";
+import udemyLogo from "@/images/home/udemy.png";
+import readmeragImg from "@/images/projects/ReadmeRag.png";
+import gcpDataMgmtImg from "@/images/projects/gcp-data-mgmt.webp";
 
 const education = [
   {
@@ -14,6 +24,7 @@ const education = [
       "Focus: Deep Learning, Big Data Analytics, and Cloud Computing. CGPA: 3.87/4.00.",
     thesis: "Low Light Object Detection with YOLO",
     coursework: "Machine Learning for Data Science, Big Data Applications & Analytics, Data Mining, Programming for Data Science",
+    logo: umLogo,
     status: "Active",
   },
   {
@@ -21,7 +32,8 @@ const education = [
     school: "Universiti Malaya",
     period: "2018 - 2022",
     description:
-      "Graduated with CGPA 3.47/4.00. Built foundational knowledge in scientific computing and data analysis.",
+      "Graduated with CGPA 3.47/4.00. Learnt Materials Science and Engineering principles, building foundational knowledge in scientific computing and data analysis.",
+    logo: umLogo,
     status: "Completed",
   },
 ];
@@ -33,7 +45,8 @@ const work = [
     period: "2024 - Present",
     description:
       "Evaluating AI-generated responses across diverse LLM projects, contributing to model training for Malay language and technical/code prompts.",
-    status: "Active",
+    logo: partTimeLogo,
+    status: "Active (Part-time)",
   },
   {
     role: "Data Engineer",
@@ -41,6 +54,7 @@ const work = [
     period: "2023 - 2024",
     description:
       "Migrated legacy auth system to SSO platform. Designed T-1 batch ETL pipelines using PySpark and AWS Glue. Built serverless orchestration with Step Functions and Lambda.",
+    logo: valuelabsLogo,
     status: "Completed",
   },
   {
@@ -49,6 +63,7 @@ const work = [
     period: "2022 - 2023",
     description:
       "Maintained legacy authentication ETL pipelines. Resolved data integrity issues in account purge logic. Generated user engagement reports for business stakeholders.",
+    logo: astroLogo,
     status: "Completed",
   },
 ];
@@ -59,6 +74,7 @@ const featuredProjects = [
     description:
       "A RAG chatbot that lets anyone ask questions about my work by pulling from my GitHub READMEs. Instead of a static portfolio, visitors can query my projects, skills, and experience naturally.",
     tech: ["embeddings", "gemini-api", "rag", "llm", "chromadb", "openrouter", "litellm"],
+    img: readmeragImg,
     github: "https://github.com/ridhwanrazaliwork/readmerag",
   },
   {
@@ -66,49 +82,65 @@ const featuredProjects = [
     description:
       "Led a team of 8 to architect an end-to-end data pipeline on GCP processing a hotel review dataset for business intelligence insights. Used PySpark and Hive for distributed processing on Dataproc.",
     tech: ["GCP", "Dataproc", "PySpark", "Hive", "Looker Studio"],
+    img: gcpDataMgmtImg,
     github: "https://github.com/ridhwanrazaliwork/Google_Cloud_Data_Management_Project",
   },
 ];
 
 const featuredCerts = [
-  { name: "MLOps Bootcamp", issuer: "MLflow, Airflow, Docker, GitHub Actions CI/CD", year: "2026" },
+  { name: "MLOps Bootcamp",
+    issuer: "MLflow, Airflow, Docker, GitHub Actions CI/CD",
+    year: "2026",
+    logo: udemyLogo,
+    link: "https://www.udemy.com/certificate/UC-194396ca-2e55-49aa-8dbd-f89940196223/",
+  },
   {
     name: "Google Cloud Data Analytics Certificate",
     issuer: "BigQuery, SQL on GCP, Looker Studio",
     year: "2025",
+    logo: gcpLogo,
     link: "https://www.credly.com/badges/85768225-9c63-48ee-91f7-3b056c6116cc/public_url",
   },
-  { name: "Data Engineering using AWS Data Analytics", issuer: "Udemy — S3, Glue, Redshift, Athena", year: "2023" },
+  { name: "Data Engineering using AWS Data Analytics",
+    issuer: "Udemy — S3, Glue, Redshift, Athena",
+    year: "2023",
+    logo: udemyLogo,
+    link: "https://www.udemy.com/certificate/UC-313c5b74-d2a7-48fa-9623-cb8bcc40299f/",
+  },
 ];
 
 const otherCerts = [
   {
     name: "The Complete Full-Stack Web Development Bootcamp", issuer: "Udemy",
     year: "2025",
+    logo: udemyLogo,
     link: "https://www.udemy.com/certificate/UC-df53cf97-6bfb-4112-80a9-08f91ed344ff/",
   },
   {
     name: "PyTorch for Deep Learning Bootcamp", issuer: "Zero to Mastery",
-    year: "2024",
+    year: "2025",
+    logo: udemyLogo,
     link: "https://www.udemy.com/certificate/UC-8f34eab4-ca85-4563-9143-3d418709075b/",
   },
   {
     name: "TensorFlow for Deep Learning Bootcamp", issuer: "Zero to Mastery",
-    year: "2024",
+    year: "2025",
+    logo: udemyLogo,
     link: "https://www.udemy.com/certificate/UC-1679c1f9-0e48-4a7a-bc2f-34302e60ab2b/",
   },
   {
     name: "Mastering React & Node.js Firebase Authentication", issuer: "Udemy",
-    year: "2024",
+    year: "2025",
+    logo: udemyLogo,
     link: "https://www.udemy.com/certificate/UC-c006a6db-1f94-4a53-9a90-082b35a9615d/",
   },
 ];
 
 const techPillars = [
-  { icon: "☁️", title: "Cloud & Data Engineering", skills: ["AWS", "GCP", "Azure", "Spark", "Hadoop", "Hive", "Dataproc", "Glue"] },
-  { icon: "🤖", title: "AI & Machine Learning", skills: ["PyTorch", "TensorFlow", "MLflow", "scikit-learn", "Pandas", "NumPy", "Matplotlib", "Python", "R"] },
-  { icon: "💻", title: "Full-Stack & APIs", skills: ["Next.js", "FastAPI", "Node.js", "TypeScript", "React", "Tailwind CSS", "JavaScript", "HTML5", "Streamlit"] },
-  { icon: "🛠️", title: "Databases & DevOps", skills: ["PostgreSQL", "MongoDB", "Docker", "DynamoDB", "MSSQL", "MySQL", "Supabase", "GitHub Actions", "Git", "Jira", "Bitbucket"] },
+  { icon: <Cloud size={20} />, title: "Cloud & Data Engineering", skills: ["AWS", "GCP", "Azure", "Spark", "Hadoop", "Hive", "Dataproc", "Glue"] },
+  { icon: <Brain size={20} />, title: "AI & Machine Learning", skills: ["PyTorch", "TensorFlow", "MLflow", "scikit-learn", "Pandas", "NumPy", "Matplotlib", "Python", "R"] },
+  { icon: <Code2 size={20} />, title: "Full-Stack & APIs", skills: ["Next.js", "FastAPI", "Node.js", "TypeScript", "React", "Tailwind CSS", "JavaScript", "HTML5", "Streamlit"] },
+  { icon: <Database size={20} />, title: "Databases & DevOps", skills: ["PostgreSQL", "MongoDB", "Docker", "DynamoDB", "MSSQL", "MySQL", "Supabase", "GitHub Actions", "Git", "Jira", "Bitbucket"] },
 ];
 
 function StatusBadge({ status }: { status: string }) {
@@ -150,13 +182,13 @@ function BentoCard({ children, className = "" }: { children: React.ReactNode; cl
   );
 }
 
-function StatChip({ icon, label, value }: { icon: string; label: string; value: string }) {
+function StatChip({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
     <div
       className="flex items-center gap-3 rounded-xl px-4 py-3 border border-[var(--glass-border)] backdrop-blur-sm transition-all duration-200 hover:scale-105 hover:border-accent/20"
       style={{ background: "var(--glass-bg)" }}
     >
-      <span className="text-lg shrink-0">{icon}</span>
+      <span className="shrink-0">{icon}</span>
       <div className="min-w-0">
         <p className="text-[10px] text-[#737373]" style={{ fontFamily: "var(--font-jetbrains)" }}>{label}</p>
         <p className="text-sm text-foreground truncate">{value}</p>
@@ -189,6 +221,14 @@ export default function HomePage() {
     (new Date().getTime() - new Date("1999-10-25").getTime()) / 31557600000
   );
 
+  const heroRef = useRef<HTMLDivElement>(null);
+  const { scrollYProgress } = useScroll({
+    target: heroRef,
+    offset: ["start end", "end start"],
+  });
+  const rotateTriangle = useTransform(scrollYProgress, [0, 1], [-10, 10]);
+  const rotateCircle = useTransform(scrollYProgress, [0, 1], [10, -10]);
+
   return (
     <div
       style={{
@@ -199,7 +239,19 @@ export default function HomePage() {
       {/* ─── HERO BENTO ─── */}
       <section className="pt-28 pb-16 px-4">
         <div className="max-w-5xl mx-auto space-y-6">
-          <div className="glass-panel p-6 md:p-10 flex flex-col md:flex-row items-center gap-8 transition-all duration-300 hover:shadow-[0_0_30px_var(--accent-glow)] hover:border-accent/30">
+          <div ref={heroRef} className="glass-panel p-6 md:p-10 flex flex-col md:flex-row items-center gap-8 transition-all duration-300 hover:shadow-[0_0_30px_var(--accent-glow)] hover:border-accent/30 relative">
+            <motion.svg
+              style={{ rotate: rotateTriangle }}
+              className="absolute -right-6 -top-6 w-20 h-20 text-accent/10 pointer-events-none"
+            >
+              <polygon points="0,100 50,0 100,100" fill="none" stroke="currentColor" strokeWidth="1.5" />
+            </motion.svg>
+            <motion.svg
+              style={{ rotate: rotateCircle }}
+              className="absolute -left-4 -bottom-4 w-16 h-16 text-accent/10 pointer-events-none"
+            >
+              <circle cx="40" cy="40" r="38" fill="none" stroke="currentColor" strokeWidth="1.5" />
+            </motion.svg>
             <div className="group relative w-32 h-32 md:w-40 md:h-40 shrink-0">
               <div
                 style={{
@@ -238,13 +290,13 @@ export default function HomePage() {
                 Data Engineer with 2 years experience, finishing MSc in Data Science. Looking for data or ML/AI engineering roles.
               </p>
               <p className="mt-1 text-sm text-[#737373]" style={{ fontFamily: "var(--font-jetbrains)" }}>
-                {age} years old &middot; Kuala Lumpur, MY
+                {age}&nbsp;years old &middot; Kuala Lumpur, MY
               </p>
               <div
                 className="inline-flex items-center gap-2 mt-3 px-3 py-1.5 rounded-full border border-accent/20 bg-accent/5 text-xs overflow-hidden max-w-[260px]"
                 style={{ fontFamily: "var(--font-jetbrains)" }}
               >
-                <span className="text-accent shrink-0">🧑‍💻</span>
+                <span className="text-accent shrink-0"><BookOpen size={14} /></span>
                 <div className="overflow-hidden whitespace-nowrap">
                   <span className="inline-block animate-marquee">
                     Studying: Azure certifications · Expanding cloud expertise &nbsp;&nbsp;·&nbsp;&nbsp; Studying: Azure certifications
@@ -286,10 +338,10 @@ export default function HomePage() {
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 ">
-            <StatChip icon="📍" label="Location" value="Kuala Lumpur, MY" />
-            <StatChip icon="🎓" label="Education" value="Universiti Malaya" />
-            <StatChip icon="⚡" label="Current Role" value="Postgraduate Student" />
-            <StatChip icon="🟢" label="Availability" value="Open to new roles" />
+            <StatChip icon={<MapPin size={16} />} label="Location" value="Kuala Lumpur, MY" />
+            <StatChip icon={<GraduationCap size={16} />} label="Education" value="Universiti Malaya" />
+            <StatChip icon={<Briefcase size={16} />} label="Current Role" value="Postgraduate Student" />
+            <StatChip icon={<Circle size={14} fill="var(--accent)" stroke="var(--accent)" />} label="Availability" value="Open to new roles" />
           </div>
         </div>
       </section>
@@ -378,12 +430,30 @@ export default function HomePage() {
                   >
                     <div className="flex items-start justify-between gap-4 mb-3">
                       <div className="min-w-0">
-                        <h3 className="text-lg font-semibold text-foreground">
-                          {"role" in item ? item.role : item.degree}
-                        </h3>
-                        <p className="text-[#a3a3a3] text-sm mt-0.5">
-                          {"company" in item ? item.company : item.school}
-                        </p>
+                        {"logo" in item && item.logo ? (
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-7 h-7 rounded-md overflow-hidden shrink-0 bg-white/[0.04] border border-white/[0.06] flex items-center justify-center">
+                              <Image src={item.logo} alt={"company" in item ? item.company : item.school} width={28} height={28} className="object-contain" />
+                            </div>
+                            <div>
+                              <h3 className="text-lg font-semibold text-foreground">
+                                {"role" in item ? item.role : item.degree}
+                              </h3>
+                              <p className="text-[#a3a3a3] text-sm mt-0.5">
+                                {"company" in item ? item.company : item.school}
+                              </p>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <h3 className="text-lg font-semibold text-foreground">
+                              {"role" in item ? item.role : item.degree}
+                            </h3>
+                            <p className="text-[#a3a3a3] text-sm mt-0.5">
+                              {"company" in item ? item.company : item.school}
+                            </p>
+                          </>
+                        )}
                       </div>
                       <div className="shrink-0 flex flex-col items-end gap-1.5">
                         <StatusBadge status={item.status} />
@@ -432,13 +502,13 @@ export default function HomePage() {
           <div className="grid md:grid-cols-2 gap-6">
             {featuredProjects.map((project, i) => (
               <BentoCard key={i}>
-                <div className="w-10 h-10 rounded-xl bg-accent/20 flex items-center justify-center mb-4">
-                  <span
-                    className="text-accent font-bold text-xs tracking-widest"
-                    style={{ fontFamily: "var(--font-jetbrains)" }}
-                  >
-                    {i === 0 ? "RG" : "DE"}
-                  </span>
+                <div className="w-full aspect-video rounded-xl overflow-hidden relative bg-neutral-900 shadow-md mb-4">
+                  <Image
+                    src={project.img}
+                    alt={project.title}
+                    fill
+                    className="object-cover object-top"
+                  />
                 </div>
                 <h3 className="text-xl font-semibold text-foreground">
                   {project.title}
@@ -488,13 +558,8 @@ export default function HomePage() {
           <div className="grid md:grid-cols-2 gap-6">
             {featuredCerts.map((cert, i) => (
               <BentoCard key={i} className="flex items-start gap-5">
-                <div className="w-12 h-12 rounded-xl bg-accent/20 flex items-center justify-center shrink-0">
-                  <span
-                    className="text-accent font-bold text-[10px] tracking-wider"
-                    style={{ fontFamily: "var(--font-jetbrains)" }}
-                  >
-                    CERT
-                  </span>
+                <div className="w-10 h-10 rounded-lg overflow-hidden shrink-0 bg-white/[0.04] border border-white/[0.06] flex items-center justify-center">
+                  <Image src={cert.logo} alt={cert.name} width={40} height={40} className="object-contain p-1" />
                 </div>
                 <div className="min-w-0">
                   <h3 className="text-lg font-semibold text-foreground">
@@ -580,7 +645,7 @@ export default function HomePage() {
                   </svg>
                 </div>
                 <span className="text-[10px] text-[#737373]" style={{ fontFamily: "var(--font-jetbrains)" }}>email</span>
-                <span className="text-sm text-foreground group-hover:text-accent transition-colors">ridhwanrazaliwork@gmail.com</span>
+                {/* <span className="text-sm text-foreground group-hover:text-accent transition-colors">ridhwanrazaliwork@gmail.com</span> */}
               </a>
 
               <a
@@ -595,7 +660,7 @@ export default function HomePage() {
                   </svg>
                 </div>
                 <span className="text-[10px] text-[#737373]" style={{ fontFamily: "var(--font-jetbrains)" }}>linkedin</span>
-                <span className="text-sm text-foreground group-hover:text-accent transition-colors">ridhwan-bin-razali</span>
+                {/* <span className="text-sm text-foreground group-hover:text-accent transition-colors">ridhwan-bin-razali</span> */}
               </a>
 
               <a
@@ -610,7 +675,7 @@ export default function HomePage() {
                   </svg>
                 </div>
                 <span className="text-[10px] text-[#737373]" style={{ fontFamily: "var(--font-jetbrains)" }}>github</span>
-                <span className="text-sm text-foreground group-hover:text-accent transition-colors">ridhwanrazaliwork</span>
+                {/* <span className="text-sm text-foreground group-hover:text-accent transition-colors">ridhwanrazaliwork</span> */}
               </a>
             </div>
           </div>
