@@ -107,9 +107,9 @@ body {
   --secondary-foreground: #0a0a0a;
   --accent: oklch(32.634% 0.0909 252.304);
   --accent-foreground: #ffffff;
-  --accent-15: oklch(55% 0.2 108 / 0.12);
-  --accent-30: oklch(55% 0.2 108 / 0.25);
-  --accent-glow: oklch(55% 0.2 108 / 0.3);
+  --accent-15: oklch(55% 0.0909 252.304 / 0.12);
+  --accent-30: oklch(55% 0.0909 252.304 / 0.25);
+  --accent-glow: oklch(55% 0.0909 252.304 / 0.3);
   --muted: #f0f0f0;
   --muted-foreground: #737373;
   --card: #ffffff;
@@ -118,7 +118,7 @@ body {
   --glass-bg: rgba(255, 255, 255, 0.9);
   --glass-border: rgba(0, 0, 0, 0.08);
   --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.08);
-  --shadow-glow: 0 0 20px oklch(55% 0.2 108 / 0.2);
+  --shadow-glow: 0 0 20px oklch(55% 0.0909 252.304 / 0.2);
 }
 
 [data-theme="light"] .glass-button:hover {
