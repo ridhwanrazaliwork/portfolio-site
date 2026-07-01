@@ -62,7 +62,7 @@ export default function RootLayout({
           `
         }} />
       </head>
-      <body className="min-h-screen flex flex-col">
+      <body className="min-h-screen flex flex-col relative">
         <div id="initial-loader">
           <span style={{ fontFamily: "var(--font-poppins)", fontSize: "1.5rem", fontWeight: 600, color: "var(--foreground)" }}>
             Ridhwan

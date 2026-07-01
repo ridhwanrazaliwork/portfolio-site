@@ -3,32 +3,22 @@ import { MDXRemote } from "next-mdx-remote/rsc";
 import matter from "gray-matter";
 import Link from "next/link";
 import rehypePrettyCode from "rehype-pretty-code";
-import Mermaid from "@/components/blog/Mermaid";
 
 interface Props {
   params: { slug: string };
 }
 
 const components = {
-  pre: ({ children, ...props }: React.HTMLProps<HTMLPreElement>) => (
-    <pre
-      className="overflow-x-auto rounded-xl border border-white/[0.06] bg-[#0a0a0a] p-4 my-6 text-sm"
-      {...props}
-    >
-      {children}
-    </pre>
+  pre: (props: React.HTMLAttributes<HTMLPreElement>) => (
+    <pre className="overflow-x-auto rounded-xl border border-white/[0.06] bg-[#0a0a0a] p-4 my-6 text-sm" {...props} />
   ),
-  code: ({ className, children, ...props }: React.HTMLProps<HTMLElement>) => {
-    const isMermaid = className?.includes("language-mermaid");
-    if (isMermaid) {
-      return <Mermaid chart={String(children)} />;
-    }
-    return (
-      <code className={className} {...props}>
-        {children}
-      </code>
-    );
-  },
+  code: ({ className, children, ...props }: React.HTMLProps<HTMLElement>) => (
+    <code className={className} {...props}>{children}</code>
+  ),
+  img: (props: React.ImgHTMLAttributes<HTMLImageElement>) => (
+    // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text
+    <img className={`rounded-xl ${props.className || ""}`} {...props} />
+  ),
 };
 
 export default async function BlogPost({ params }: Props) {

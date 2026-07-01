@@ -1,10 +1,10 @@
 import Image from "next/image";
 import type { Metadata } from "next";
 import readmeragImg from "@/images/projects/ReadmeRag.png";
-import gcpDataMgmtImg from "@/images/projects/gcp-data-mgmt.webp";
-import agenticMedicalImg from "@/images/projects/agentic-medical.webp";
-import gcpHealthcareImg from "@/images/projects/gcp-healthcare.webp";
-import lowlightYoloImg from "@/images/projects/lowlight-yolo.webp";
+import gcpDataMgmtImg from "@/images/projects/gcp-data-mgmt.png";
+import agenticMedicalImg from "@/images/projects/agentic-medical.png";
+import gcpHealthcareImg from "@/images/projects/gcp-healthcare.png";
+import lowlightYoloImg from "@/images/projects/lowlight-yolo.png";
 
 export const metadata: Metadata = {
   title: "Projects",

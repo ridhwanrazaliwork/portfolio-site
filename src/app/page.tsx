@@ -4,7 +4,7 @@ import { useState, useRef } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { motion, useScroll, useTransform } from "framer-motion";
-import { MapPin, GraduationCap, Briefcase, Circle, Cloud, Brain, Code2, Database, BookOpen } from "lucide-react";
+import { MapPin, GraduationCap, Briefcase, Circle, Cloud, Brain, Code2, Database, BookOpen, Monitor, Cpu, Layers, Shield } from "lucide-react";
 import profileImg from "@/images/home/ridhwan.jpg";
 import umLogo from "@/images/home/um-logo.jpg";
 import astroLogo from "@/images/home/astro.png";
@@ -13,7 +13,7 @@ import partTimeLogo from "@/images/home/part-time.png";
 import gcpLogo from "@/images/home/google-cloud.png";
 import udemyLogo from "@/images/home/udemy.png";
 import readmeragImg from "@/images/projects/ReadmeRag.png";
-import gcpDataMgmtImg from "@/images/projects/gcp-data-mgmt.webp";
+import gcpDataMgmtImg from "@/images/projects/gcp-data-mgmt.png";
 
 const education = [
   {
@@ -113,24 +113,28 @@ const otherCerts = [
   {
     name: "The Complete Full-Stack Web Development Bootcamp", issuer: "Udemy",
     year: "2025",
+    icon: <Monitor size={16} />,
     logo: udemyLogo,
     link: "https://www.udemy.com/certificate/UC-df53cf97-6bfb-4112-80a9-08f91ed344ff/",
   },
   {
     name: "PyTorch for Deep Learning Bootcamp", issuer: "Zero to Mastery",
     year: "2025",
+    icon: <Cpu size={16} />,
     logo: udemyLogo,
     link: "https://www.udemy.com/certificate/UC-8f34eab4-ca85-4563-9143-3d418709075b/",
   },
   {
     name: "TensorFlow for Deep Learning Bootcamp", issuer: "Zero to Mastery",
     year: "2025",
+    icon: <Layers size={16} />,
     logo: udemyLogo,
     link: "https://www.udemy.com/certificate/UC-1679c1f9-0e48-4a7a-bc2f-34302e60ab2b/",
   },
   {
     name: "Mastering React & Node.js Firebase Authentication", issuer: "Udemy",
     year: "2025",
+    icon: <Shield size={16} />,
     logo: udemyLogo,
     link: "https://www.udemy.com/certificate/UC-c006a6db-1f94-4a53-9a90-082b35a9615d/",
   },
@@ -226,8 +230,13 @@ export default function HomePage() {
     target: heroRef,
     offset: ["start end", "end start"],
   });
-  const rotateTriangle = useTransform(scrollYProgress, [0, 1], [-10, 10]);
-  const rotateCircle = useTransform(scrollYProgress, [0, 1], [10, -10]);
+  const shapeX = useTransform(scrollYProgress, [0, 1], [16, -16]);
+  const shapeY = useTransform(scrollYProgress, [0, 1], [16, -16]);
+  const groupOpacity = useTransform(scrollYProgress, [0, 0.3, 0.7, 1], [0.15, 0.5, 0.5, 0.15]);
+  const groupRotateY = useTransform(scrollYProgress, [0, 0.5, 1], [-6, 0, 6]);
+  const node1Rotate = useTransform(scrollYProgress, [0, 1], [-90, 90]);
+  const node2Rotate = useTransform(scrollYProgress, [0, 1], [60, -60]);
+  const node3Rotate = useTransform(scrollYProgress, [0, 1], [-45, 45]);
 
   return (
     <div
@@ -240,18 +249,33 @@ export default function HomePage() {
       <section className="pt-28 pb-16 px-4">
         <div className="max-w-5xl mx-auto space-y-6">
           <div ref={heroRef} className="glass-panel p-6 md:p-10 flex flex-col md:flex-row items-center gap-8 transition-all duration-300 hover:shadow-[0_0_30px_var(--accent-glow)] hover:border-accent/30 relative">
-            <motion.svg
-              style={{ rotate: rotateTriangle }}
-              className="absolute -right-6 -top-6 w-20 h-20 text-accent/10 pointer-events-none"
+            <motion.div
+              style={{ x: shapeX, y: shapeY, opacity: groupOpacity, rotateY: groupRotateY, perspective: 600 }}
+              className="absolute -right-8 -bottom-6 w-44 h-36 pointer-events-none z-0"
             >
-              <polygon points="0,100 50,0 100,100" fill="none" stroke="currentColor" strokeWidth="1.5" />
-            </motion.svg>
-            <motion.svg
-              style={{ rotate: rotateCircle }}
-              className="absolute -left-4 -bottom-4 w-16 h-16 text-accent/10 pointer-events-none"
-            >
-              <circle cx="40" cy="40" r="38" fill="none" stroke="currentColor" strokeWidth="1.5" />
-            </motion.svg>
+              <svg viewBox="0 0 160 110" className="absolute inset-0 w-full h-full overflow-visible">
+                <line x1="142" y1="96" x2="60" y2="22" stroke="currentColor" strokeWidth="0.8" className="text-accent/10" />
+                <line x1="60" y1="22" x2="18" y2="56" stroke="currentColor" strokeWidth="0.8" className="text-accent/10" />
+              </svg>
+              <motion.svg
+                style={{ rotate: node1Rotate }}
+                className="absolute right-1 bottom-1 w-7 h-7"
+              >
+                <polygon points="0,28 14,0 28,28" fill="none" stroke="currentColor" strokeWidth="2" className="text-accent/40" />
+              </motion.svg>
+              <motion.svg
+                style={{ rotate: node2Rotate }}
+                className="absolute right-14 bottom-12 w-5 h-5"
+              >
+                <polygon points="0,20 10,0 20,20" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-accent/25" />
+              </motion.svg>
+              <motion.svg
+                style={{ rotate: node3Rotate }}
+                className="absolute right-24 bottom-20 w-4 h-4"
+              >
+                <polygon points="0,16 8,0 16,16" fill="none" stroke="currentColor" strokeWidth="1.2" className="text-accent/15" />
+              </motion.svg>
+            </motion.div>
             <div className="group relative w-32 h-32 md:w-40 md:h-40 shrink-0">
               <div
                 style={{
@@ -432,8 +456,8 @@ export default function HomePage() {
                       <div className="min-w-0">
                         {"logo" in item && item.logo ? (
                           <div className="flex items-center gap-2.5">
-                            <div className="w-7 h-7 rounded-md overflow-hidden shrink-0 bg-white/[0.04] border border-white/[0.06] flex items-center justify-center">
-                              <Image src={item.logo} alt={"company" in item ? item.company : item.school} width={28} height={28} className="object-contain" />
+                            <div className="w-7 h-7 rounded-md overflow-hidden shrink-0 bg-white/[0.04] border border-[var(--glass-border)] flex items-center justify-center">
+                              <Image src={item.logo} alt={"company" in item ? item.company : item.school} width={28} height={28} className="object-contain" style={{ width: "auto", height: "auto" }} />
                             </div>
                             <div>
                               <h3 className="text-lg font-semibold text-foreground">
@@ -507,6 +531,7 @@ export default function HomePage() {
                     src={project.img}
                     alt={project.title}
                     fill
+                    sizes="(max-width: 768px) 100vw, 50vw"
                     className="object-cover object-top"
                   />
                 </div>
@@ -558,8 +583,8 @@ export default function HomePage() {
           <div className="grid md:grid-cols-2 gap-6">
             {featuredCerts.map((cert, i) => (
               <BentoCard key={i} className="flex items-start gap-5">
-                <div className="w-10 h-10 rounded-lg overflow-hidden shrink-0 bg-white/[0.04] border border-white/[0.06] flex items-center justify-center">
-                  <Image src={cert.logo} alt={cert.name} width={40} height={40} className="object-contain p-1" />
+                <div className="w-10 h-10 rounded-xl overflow-hidden shrink-0 bg-white/[0.04] border border-[var(--glass-border)] flex items-center justify-center">
+                  <Image src={cert.logo} alt={cert.name} width={40} height={40} className="object-contain p-1" style={{ width: "auto", height: "auto" }} />
                 </div>
                 <div className="min-w-0">
                   <h3 className="text-lg font-semibold text-foreground">
@@ -592,14 +617,24 @@ export default function HomePage() {
             ))}
           </div>
 
-          <div className="glass-panel p-5 md:p-6">
-            <h3 className="text-sm font-semibold text-foreground mb-4">Other Certifications &amp; Coursework</h3>
-            <div className="space-y-2">
+          <BentoCard>
+            <h3
+              className="text-sm font-semibold text-foreground mb-5"
+              style={{ letterSpacing: "-0.01em" }}
+            >
+              Other Certifications
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
               {otherCerts.map((cert, i) => (
-                <div key={i} className="flex flex-wrap items-baseline gap-x-2 text-sm">
-                  <span className="text-foreground/80">{cert.name}</span>
-                  <span className="text-[#737373] text-xs">— {cert.issuer}</span>
-                  <span className="text-[11px] text-[#737373]" style={{ fontFamily: "var(--font-jetbrains)" }}>({cert.year})</span>
+                <div
+                  key={i}
+                  className="glass-panel p-3.5 rounded-xl transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_0_20px_var(--accent-glow)] hover:border-accent/30"
+                >
+                  <div className="flex items-start justify-between gap-2 mb-1">
+                    <span className="text-[#737373]">{cert.icon}</span>
+                    <span className="text-[10px] text-[#737373] shrink-0" style={{ fontFamily: "var(--font-jetbrains)" }}>({cert.year})</span>
+                  </div>
+                  <p className="text-sm text-foreground/80 leading-snug mb-1.5">{cert.name}</p>
                   {cert.link && (
                     <a
                       href={cert.link}
@@ -614,7 +649,7 @@ export default function HomePage() {
                 </div>
               ))}
             </div>
-          </div>
+          </BentoCard>
         </div>
       </section>
 
