@@ -116,7 +116,7 @@ export default function StarCanvas({ configRef }: StarCanvasProps) {
       const w = c.width / dpr;
       const h = c.height / dpr;
 
-      const viewportRatio = h < 900 ? 0.15 : 0.35;
+      const viewportRatio = w < 768 ? 0.20 : 0.35;
 
       if (isLight) {
         cx.fillStyle = "#ffffff";
