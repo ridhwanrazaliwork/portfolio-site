@@ -116,14 +116,16 @@ export default function StarCanvas({ configRef }: StarCanvasProps) {
       const w = c.width / dpr;
       const h = c.height / dpr;
 
+      const viewportRatio = h < 900 ? 0.15 : 0.35;
+
       if (isLight) {
         cx.fillStyle = "#ffffff";
         cx.fillRect(0, 0, w, h);
 
         const grad = cx.createLinearGradient(0, 0, 0, h);
         grad.addColorStop(0, "#ffffff");
-        grad.addColorStop(0.6, "#ffffff");
-        grad.addColorStop(0.85, `rgba(${curR}, ${curG}, ${curB}, 0.06)`);
+        grad.addColorStop(viewportRatio, "#ffffff");
+        grad.addColorStop(viewportRatio + 0.50, `rgba(${curR}, ${curG}, ${curB}, 0.06)`);
         grad.addColorStop(1, `rgba(${violetColor.r}, ${violetColor.g}, ${violetColor.b}, 0.08)`);
         cx.fillStyle = grad;
         cx.fillRect(0, 0, w, h);
@@ -132,8 +134,8 @@ export default function StarCanvas({ configRef }: StarCanvasProps) {
         cx.fillRect(0, 0, w, h);
 
         const globalWaveOffset = Math.sin(time * config.waveSpeed) * (config.amplitude * 0.35);
-        const stop1 = 0.35 + globalWaveOffset / h;
-        const stop2 = 0.75 + globalWaveOffset / h;
+        const stop1 = viewportRatio + globalWaveOffset / h;
+        const stop2 = (viewportRatio + 0.40) + globalWaveOffset / h;
         const clamp = (v: number) => Math.min(1, Math.max(0, v));
 
         const grad = cx.createLinearGradient(0, 0, 0, h);
@@ -147,7 +149,7 @@ export default function StarCanvas({ configRef }: StarCanvasProps) {
 
       const isStaggered = config.gridLayout === "staggered";
       const step = isStaggered ? config.density / 2 : config.density;
-      const startY = h * 0.35;
+      const startY = h * viewportRatio;
 
       let colIndex = 0;
       for (let x = -step; x <= w + step * 2; x += step) {
