@@ -4,6 +4,7 @@ import SiteHeader from "@/components/site/SiteHeader";
 import PageTransition from "@/components/site/PageTransition";
 import ViewTransitionWrapper from "@/components/site/ViewTransitionWrapper";
 import ChatWidget from "@/components/chat/ChatWidget";
+import StarBackground from "@/components/star/StarBackground";
 import "./globals.css";
 
 const poppins = Poppins({
@@ -73,6 +74,7 @@ export default function RootLayout({
         <ViewTransitionWrapper>
           <PageTransition>{children}</PageTransition>
         </ViewTransitionWrapper>
+        <StarBackground />
         <ChatWidget />
       </body>
     </html>

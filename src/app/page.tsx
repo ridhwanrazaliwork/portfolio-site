@@ -235,7 +235,7 @@ export default function HomePage() {
       <section className="pt-28 pb-16 px-4">
         <div className="max-w-5xl mx-auto space-y-6">
           <div className="glass-panel p-6 md:p-10 flex flex-col md:flex-row items-center gap-8 transition-all duration-300 hover:shadow-[0_0_30px_var(--accent-glow)] hover:border-accent/30 relative">
-            <div
+            {/* <div
               className="absolute inset-0 pointer-events-none z-0 rounded-[15px]"
               style={{
                 backgroundImage: `
@@ -244,7 +244,7 @@ export default function HomePage() {
                   repeating-linear-gradient(120deg, transparent, transparent 29px, var(--glass-border) 29px, var(--glass-border) 30px)
                 `,
               }}
-            />
+            /> */}
             <div className="group relative w-32 h-32 md:w-40 md:h-40 shrink-0">
               <div
                 style={{
@@ -292,7 +292,7 @@ export default function HomePage() {
                 <span className="text-accent shrink-0"><BookOpen size={14} /></span>
                 <div className="overflow-hidden whitespace-nowrap">
                   <span className="inline-block animate-marquee">
-                    Studying: Azure certifications · Expanding cloud expertise &nbsp;&nbsp;·&nbsp;&nbsp; Studying: Azure certifications
+                    Studying: Azure certifications &nbsp;&nbsp;·&nbsp;&nbsp; Studying: Azure certifications
                   </span>
                 </div>
               </div>
