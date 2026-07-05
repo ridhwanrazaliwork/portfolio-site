@@ -23,10 +23,6 @@ function drawFourPointStar(
   size: number,
 ) {
   if (size <= 0.2) return;
-  if (size < 1.5) {
-    context.fillRect(cx - size, cy - size, size * 2, size * 2);
-    return;
-  }
   context.beginPath();
   context.moveTo(cx, cy - size);
   context.quadraticCurveTo(cx, cy, cx + size, cy);
