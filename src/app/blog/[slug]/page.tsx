@@ -31,7 +31,7 @@ export default async function BlogPost({ params }: Props) {
       <div className="min-h-screen flex items-center justify-center px-4">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-foreground">Post not found</h1>
-          <p className="text-[#a3a3a3] mt-2">
+          <p className="text-muted-foreground mt-2">
             The blog post you&apos;re looking for doesn&apos;t exist.
           </p>
           <Link
@@ -60,7 +60,7 @@ export default async function BlogPost({ params }: Props) {
       <article className="max-w-3xl mx-auto">
         <Link
           href="/blog"
-          className="text-sm text-[#737373] hover:text-accent transition-colors"
+          className="text-sm text-muted-foreground hover:text-accent transition-colors"
           style={{ fontFamily: "var(--font-jetbrains)" }}
         >
           ← Back to Blog
@@ -75,7 +75,7 @@ export default async function BlogPost({ params }: Props) {
           </h1>
           <div className="flex items-center gap-3 mt-3">
             <time
-              className="text-sm text-[#737373]"
+              className="text-sm text-muted-foreground"
               style={{ fontFamily: "var(--font-jetbrains)" }}
             >
               {new Date(data.date as string).toLocaleDateString("en-US", {

@@ -40,12 +40,12 @@ export default function BlogPage() {
         >
           Blog
         </h1>
-        <p className="text-[#a3a3a3] text-center max-w-xl mx-auto mb-14 text-base md:text-lg">
+        <p className="text-muted-foreground text-center max-w-xl mx-auto mb-14 text-base md:text-lg">
           Thoughts on data engineering, machine learning, and building things.
         </p>
 
         {posts.length === 0 && (
-          <p className="text-center text-[#737373]">No posts yet. Coming soon!</p>
+          <p className="text-center text-muted-foreground">No posts yet. Coming soon!</p>
         )}
 
         <div className="grid gap-6 md:grid-cols-2">

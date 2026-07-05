@@ -13,7 +13,7 @@ export interface EngineConfig {
 }
 
 export const DEFAULT_CONFIG: EngineConfig = {
-  density: 12,
+  density: 18,
   amplitude: 18,
   waveSpeed: 1.2,
   starSize: 8.0,

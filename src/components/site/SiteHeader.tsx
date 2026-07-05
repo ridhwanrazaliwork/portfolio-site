@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { flushSync } from "react-dom";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -15,8 +15,6 @@ export default function SiteHeader() {
   const pathname = usePathname();
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [mobileOpen, setMobileOpen] = useState(false);
-  const toggleRef = useRef<HTMLButtonElement>(null);
-
   useEffect(() => {
     const saved = localStorage.getItem("theme") as "dark" | "light" | null;
     if (saved) setTheme(saved); // eslint-disable-line react-hooks/set-state-in-effect
@@ -24,6 +22,8 @@ export default function SiteHeader() {
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
+    document.documentElement.classList.toggle("dark", theme === "dark");
+    document.documentElement.classList.toggle("light", theme === "light");
     localStorage.setItem("theme", theme);
   }, [theme]);
 
@@ -31,13 +31,6 @@ export default function SiteHeader() {
   useEffect(() => { setMobileOpen(false); }, [pathname]);
 
   const toggleTheme = useCallback(() => {
-    const rect = toggleRef.current?.getBoundingClientRect();
-    if (rect) {
-      const x = rect.left + rect.width / 2;
-      const y = rect.top + rect.height / 2;
-      document.documentElement.style.setProperty("--vt-x", `${x}px`);
-      document.documentElement.style.setProperty("--vt-y", `${y}px`);
-    }
     document.documentElement.classList.add("vt-theme");
 
     const newTheme = theme === "dark" ? "light" : "dark";
@@ -47,13 +40,13 @@ export default function SiteHeader() {
         setTheme(newTheme);
       });
       document.documentElement.setAttribute("data-theme", newTheme);
+      document.documentElement.classList.toggle("dark", newTheme === "dark");
+      document.documentElement.classList.toggle("light", newTheme === "light");
       localStorage.setItem("theme", newTheme);
     });
 
     transition.finished.then(() => {
       document.documentElement.classList.remove("vt-theme");
-      document.documentElement.style.removeProperty("--vt-x");
-      document.documentElement.style.removeProperty("--vt-y");
     });
   }, [theme]);
 
@@ -70,7 +63,6 @@ export default function SiteHeader() {
             <span className="hidden md:inline">Ridhwan</span>
           </Link>
           <button
-            ref={toggleRef}
             onClick={toggleTheme}
             className="w-8 h-8 rounded-full flex items-center justify-center text-sm transition-colors hover:bg-white/10 text-foreground/70 hover:text-foreground"
             aria-label="Toggle theme"

@@ -23,6 +23,10 @@ function drawFourPointStar(
   size: number,
 ) {
   if (size <= 0.2) return;
+  if (size < 1.5) {
+    context.fillRect(cx - size, cy - size, size * 2, size * 2);
+    return;
+  }
   context.beginPath();
   context.moveTo(cx, cy - size);
   context.quadraticCurveTo(cx, cy, cx + size, cy);
@@ -50,7 +54,7 @@ export default function StarCanvas({ configRef }: StarCanvasProps) {
     let time = 0;
     let lastTime = performance.now();
     let colorProgress = 0;
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = Math.min(window.devicePixelRatio || 1, 8);
 
     function resize() {
       const c = canvasRef.current;
@@ -73,6 +77,10 @@ export default function StarCanvas({ configRef }: StarCanvasProps) {
       if (!cx) return;
 
       const delta = (now - lastTime) / 1000 || 0;
+      if (delta < 0.025) {
+        rafRef.current = requestAnimationFrame(render);
+        return;
+      }
       lastTime = now;
       time += delta;
 

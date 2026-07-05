@@ -14,7 +14,7 @@ export default function PostCard({ slug, title, description, date, tags }: PostC
       <div className="glass-panel p-6 transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_0_30px_var(--accent-glow)] hover:border-accent/30">
         <div className="flex items-center gap-3 mb-3">
           <span
-            className="text-[11px] text-[#737373]"
+            className="text-[11px] text-muted-foreground"
             style={{ fontFamily: "var(--font-jetbrains)" }}
           >
             {new Date(date).toLocaleDateString("en-US", {
@@ -43,7 +43,7 @@ export default function PostCard({ slug, title, description, date, tags }: PostC
         >
           {title}
         </h3>
-        <p className="text-[#a3a3a3] text-sm mt-2 leading-relaxed">
+        <p className="text-muted-foreground text-sm mt-2 leading-relaxed">
           {description}
         </p>
       </div>

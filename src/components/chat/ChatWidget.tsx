@@ -176,7 +176,7 @@ export default function ChatWidget() {
                     Rchat
                   </p>
                   <p
-                    className="text-[10px] text-[#737373]"
+                    className="text-[10px] text-muted-foreground"
                     style={{ fontFamily: "var(--font-jetbrains)" }}
                   >
                     Ask me anything about Ridhwan

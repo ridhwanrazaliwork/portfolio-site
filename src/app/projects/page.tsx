@@ -69,7 +69,7 @@ const projects = [
 function TechBadge({ label }: { label: string }) {
   return (
     <span
-      className="px-3 py-1 rounded-full text-[11px] font-medium text-[#a3a3a3] bg-white/[0.06] border border-white/[0.06]"
+      className="px-3 py-1 rounded-full text-[11px] font-medium text-muted-foreground bg-white/[0.06] border border-white/[0.06]"
       style={{ fontFamily: "var(--font-jetbrains)" }}
     >
       {label}
@@ -87,7 +87,7 @@ export default function ProjectsPage() {
         >
           Projects
         </h1>
-        <p className="text-[#a3a3a3] text-center max-w-xl mx-auto mb-14 text-base md:text-lg">
+        <p className="text-muted-foreground text-center max-w-xl mx-auto mb-14 text-base md:text-lg">
           A selection of projects I have worked on.
         </p>
 
@@ -115,7 +115,7 @@ export default function ProjectsPage() {
                 >
                   {project.title}
                 </h3>
-                <p className="text-[#a3a3a3] text-sm mt-2 leading-relaxed flex-1">
+                <p className="text-muted-foreground text-sm mt-2 leading-relaxed flex-1">
                   {project.description}
                 </p>
                 <div className="flex flex-wrap gap-2 mt-4">
