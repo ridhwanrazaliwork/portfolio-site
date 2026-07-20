@@ -163,91 +163,91 @@ export default function StarCanvas({ configRef }: StarCanvasProps) {
       const step = isStaggered ? config.density / 2 : config.density;
       const startY = h * viewportRatio;
 
-      let colIndex = 0;
-      for (let x = -step; x <= w + step * 2; x += step) {
-        let rowIndex = 0;
-        for (let y = startY - step * 2; y <= h + step * 2; y += step) {
-          if (isStaggered && (colIndex + rowIndex) % 2 !== 0) {
-            rowIndex++;
-            continue;
-          }
-
-          const waveX = x * 0.004;
-          const waveOffset =
-            Math.sin(waveX + time * config.waveSpeed) * config.amplitude;
-          const targetY = y + waveOffset;
-
-          if (targetY < startY) {
-            rowIndex++;
-            continue;
-          }
-
-          const depthFactor = (y - startY) / (h - startY);
-          const fade =
-            0.25 +
-            0.75 * Math.pow(Math.min(1, Math.max(0, depthFactor)), 0.8);
-
-          const starR = Math.round(
-            curR + (violetColor.r - curR) * depthFactor,
-          );
-          const starG = Math.round(
-            curG + (violetColor.g - curG) * depthFactor,
-          );
-          const starB = Math.round(
-            curB + (violetColor.b - curB) * depthFactor,
-          );
-
-          cx.fillStyle = `rgba(${starR}, ${starG}, ${starB}, ${0.92 * Math.min(1, Math.max(0, depthFactor))})`;
-
-          let patternMultiplier = 1.0;
-          const px = x * 0.02;
-          const py = targetY * 0.02;
-
-          switch (config.patternStyle) {
-            case "quantum":
-              patternMultiplier =
-                0.55 + 0.45 * Math.sin(px) * Math.sin(py + time);
-              break;
-            case "ripple": {
-              const cx = w * 0.5;
-              const cy = h * 0.9;
-              const dx = x - cx;
-              const dy = targetY - cy;
-              const dist = Math.sqrt(dx * dx + dy * dy);
-              patternMultiplier =
-                0.5 + 0.5 * Math.sin(dist * 0.04 - time * 3.0);
-              break;
+        let colIndex = 0;
+        for (let x = -step; x <= w + step * 2; x += step) {
+          let rowIndex = 0;
+          for (let y = startY - step * 2; y <= h + step * 2; y += step) {
+            if (isStaggered && (colIndex + rowIndex) % 2 !== 0) {
+              rowIndex++;
+              continue;
             }
-            case "moire":
-              patternMultiplier =
-                0.55 +
-                0.45 *
-                  Math.sin(
-                    px * Math.cos(time * 0.1) * 3 +
-                      py * Math.sin(time * 0.15) * 3,
-                  );
-              break;
-            case "fluid":
-              patternMultiplier =
-                0.5 + 0.5 * Math.sin(px - py + time * 1.5);
-              break;
+
+            const waveX = x * 0.004;
+            const waveOffset =
+              Math.sin(waveX + time * config.waveSpeed) * config.amplitude;
+            const targetY = y + waveOffset;
+
+            if (targetY < startY) {
+              rowIndex++;
+              continue;
+            }
+
+            const depthFactor = (y - startY) / (h - startY);
+            const fade =
+              0.25 +
+              0.75 * Math.pow(Math.min(1, Math.max(0, depthFactor)), 0.8);
+
+            const starR = Math.round(
+              curR + (violetColor.r - curR) * depthFactor,
+            );
+            const starG = Math.round(
+              curG + (violetColor.g - curG) * depthFactor,
+            );
+            const starB = Math.round(
+              curB + (violetColor.b - curB) * depthFactor,
+            );
+
+            cx.fillStyle = `rgba(${starR}, ${starG}, ${starB}, ${0.92 * Math.min(1, Math.max(0, depthFactor))})`;
+
+            let patternMultiplier = 1.0;
+            const px = x * 0.02;
+            const py = targetY * 0.02;
+
+            switch (config.patternStyle) {
+              case "quantum":
+                patternMultiplier =
+                  0.55 + 0.45 * Math.sin(px) * Math.sin(py + time);
+                break;
+              case "ripple": {
+                const cx = w * 0.5;
+                const cy = h * 0.9;
+                const dx = x - cx;
+                const dy = targetY - cy;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                patternMultiplier =
+                  0.5 + 0.5 * Math.sin(dist * 0.04 - time * 3.0);
+                break;
+              }
+              case "moire":
+                patternMultiplier =
+                  0.55 +
+                  0.45 *
+                    Math.sin(
+                      px * Math.cos(time * 0.1) * 3 +
+                        py * Math.sin(time * 0.15) * 3,
+                    );
+                break;
+              case "fluid":
+                patternMultiplier =
+                  0.5 + 0.5 * Math.sin(px - py + time * 1.5);
+                break;
+            }
+
+            const pulse =
+              (0.7 +
+                0.3 * Math.sin(x * 0.008 - y * 0.005 + time * 1.5)) *
+              patternMultiplier;
+            const size = config.starSize * fade * pulse;
+
+            const waveXOffset =
+              Math.cos(y * 0.005 + time * 0.7) * (config.amplitude * 0.3);
+            const finalX = x + waveXOffset;
+
+            drawFourPointStar(cx, finalX, targetY, size);
+            rowIndex++;
           }
-
-          const pulse =
-            (0.7 +
-              0.3 * Math.sin(x * 0.008 - y * 0.005 + time * 1.5)) *
-            patternMultiplier;
-          const size = config.starSize * fade * pulse;
-
-          const waveXOffset =
-            Math.cos(y * 0.005 + time * 0.7) * (config.amplitude * 0.3);
-          const finalX = x + waveXOffset;
-
-          drawFourPointStar(cx, finalX, targetY, size);
-          rowIndex++;
+          colIndex++;
         }
-        colIndex++;
-      }
 
       timeRef.current = time;
       lastTimeRef.current = lastTime;
