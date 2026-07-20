@@ -151,6 +151,14 @@ export default function StarCanvas({ configRef }: StarCanvasProps) {
         cx.fillRect(0, 0, w, h);
       }
 
+      if (!config.particlesEnabled) {
+        timeRef.current = time;
+        lastTimeRef.current = lastTime;
+        colorProgressRef.current = colorProgress;
+        rafRef.current = requestAnimationFrame(render);
+        return;
+      }
+
       const isStaggered = config.gridLayout === "staggered";
       const step = isStaggered ? config.density / 2 : config.density;
       const startY = h * viewportRatio;

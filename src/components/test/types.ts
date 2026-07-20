@@ -10,6 +10,7 @@ export interface EngineConfig {
   colorState: number;
   patternStyle: PatternStyle;
   gridLayout: GridLayout;
+  particlesEnabled: boolean;
 }
 
 export const DEFAULT_CONFIG: EngineConfig = {
@@ -21,6 +22,7 @@ export const DEFAULT_CONFIG: EngineConfig = {
   colorState: -1,
   patternStyle: "quantum",
   gridLayout: "staggered",
+  particlesEnabled: true,
 };
 
 export const COLOR_NAMES = [

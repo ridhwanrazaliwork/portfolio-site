@@ -128,6 +128,39 @@ export default function EngineController({
         >
           <div>
             <div className="flex justify-between text-[11px] font-medium text-muted-foreground mb-2 uppercase tracking-wider">
+              <span>Particles</span>
+              <span className={config.particlesEnabled ? "text-emerald-400 font-semibold" : "text-muted-foreground font-semibold"}>
+                {config.particlesEnabled ? "ON" : "OFF"}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-1.5">
+              <button
+                onClick={() => updateConfig({ particlesEnabled: true })}
+                className={cn(
+                  "px-2 py-1.5 rounded text-[10px] font-semibold transition-all",
+                  config.particlesEnabled
+                    ? "bg-emerald-500/20 border border-emerald-500 text-emerald-400"
+                    : "bg-muted border border-border text-muted-foreground",
+                )}
+              >
+                ON
+              </button>
+              <button
+                onClick={() => updateConfig({ particlesEnabled: false })}
+                className={cn(
+                  "px-2 py-1.5 rounded text-[10px] font-semibold transition-all",
+                  !config.particlesEnabled
+                    ? "bg-red-500/20 border border-red-500 text-red-400"
+                    : "bg-muted border border-border text-muted-foreground",
+                )}
+              >
+                OFF
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <div className="flex justify-between text-[11px] font-medium text-muted-foreground mb-2 uppercase tracking-wider">
               <span>Color State</span>
               <span className={labels.colorLabelClass}>
                 {labels.colorState}

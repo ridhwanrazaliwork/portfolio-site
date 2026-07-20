@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import type { EngineConfig } from "@/components/test/types";
 import { DEFAULT_CONFIG } from "@/components/test/types";
 import StarCanvas from "@/components/test/StarCanvas";
@@ -10,6 +10,26 @@ export default function StarBackground() {
   const [config, setConfig] = useState<EngineConfig>(DEFAULT_CONFIG);
   const configRef = useRef<EngineConfig>(DEFAULT_CONFIG);
   const [controllerOpen, setControllerOpen] = useState(false);
+
+  useEffect(() => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 500;
+    canvas.height = 500;
+    const cx = canvas.getContext("2d");
+    if (!cx) return;
+
+    const start = performance.now();
+    for (let i = 0; i < 1000; i++) {
+      cx.fillStyle = `rgb(${i % 255}, ${(i * 3) % 255}, ${(i * 7) % 255})`;
+      cx.fillRect(i % 500, Math.floor(i / 500) * 2, 2, 2);
+    }
+    const elapsed = performance.now() - start;
+
+    const passed = elapsed < 16;
+    const next = { ...configRef.current, particlesEnabled: passed };
+    configRef.current = next;
+    setConfig(next);
+  }, []);
 
   const handleConfigChange = useCallback((next: EngineConfig) => {
     setConfig(next);
