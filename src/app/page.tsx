@@ -1,16 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type JSX } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { MapPin, GraduationCap, Briefcase, Circle, Cloud, Brain, Code2, Database, BookOpen, Monitor, Cpu, Layers, Shield } from "lucide-react";
+import { MapPin, GraduationCap, Briefcase, Circle, Cloud, Brain, Code2, Database, BookOpen, Monitor, Cpu, Layers, Shield, BadgeCheck } from "lucide-react";
 import profileImg from "@/images/home/ridhwan.webp";
 import umLogo from "@/images/home/um-logo.webp";
 import astroLogo from "@/images/home/astro.webp";
 import valuelabsLogo from "@/images/home/valuelabs.webp";
 import partTimeLogo from "@/images/home/part-time.webp";
-import gcpLogo from "@/images/home/google-cloud.webp";
-import udemyLogo from "@/images/home/udemy.webp";
 import readmeragImg from "@/images/projects/ReadmeRag.webp";
 import gcpDataMgmtImg from "@/images/projects/gcp-data-mgmt.webp";
 
@@ -86,55 +84,77 @@ const featuredProjects = [
   },
 ];
 
-const featuredCerts = [
-  { name: "MLOps Bootcamp",
+type Cert = {
+  name: string;
+  issuer: string;
+  year?: string;
+  link?: string;
+  icon: JSX.Element;
+};
+
+const proctoredCerts: Cert[] = [
+  // TODO: add `year` and Microsoft Learn verify `link` for each Microsoft cert, and Credly `link` for AWS.
+  {
+    name: "Microsoft Certified: Fabric Analytics Engineer Associate",
+    issuer: "DP-600 · Microsoft",
+    icon: <Database size={16} />,
+  },
+  {
+    name: "Microsoft Certified: Fabric Data Engineer Associate",
+    issuer: "DP-700 · Microsoft",
+    icon: <Cloud size={16} />,
+  },
+  {
+    name: "AWS Certified Cloud Practitioner",
+    issuer: "Amazon Web Services",
+    icon: <BadgeCheck size={16} />,
+  },
+];
+
+const courseCompletions = [
+  {
+    name: "MLOps Bootcamp",
     issuer: "MLflow, Airflow, Docker, GitHub Actions CI/CD",
     year: "2026",
-    logo: udemyLogo,
+    icon: <Code2 size={16} />,
     link: "https://www.udemy.com/certificate/UC-194396ca-2e55-49aa-8dbd-f89940196223/",
   },
   {
     name: "Google Cloud Data Analytics Certificate",
     issuer: "BigQuery, SQL on GCP, Looker Studio",
     year: "2025",
-    logo: gcpLogo,
+    icon: <Cloud size={16} />,
     link: "https://www.credly.com/badges/85768225-9c63-48ee-91f7-3b056c6116cc/public_url",
   },
-  { name: "Data Engineering using AWS Data Analytics",
+  {
+    name: "Data Engineering using AWS Data Analytics",
     issuer: "Udemy — S3, Glue, Redshift, Athena",
     year: "2023",
-    logo: udemyLogo,
+    icon: <Database size={16} />,
     link: "https://www.udemy.com/certificate/UC-313c5b74-d2a7-48fa-9623-cb8bcc40299f/",
   },
-];
-
-const otherCerts = [
   {
     name: "The Complete Full-Stack Web Development Bootcamp", issuer: "Udemy",
     year: "2025",
     icon: <Monitor size={16} />,
-    logo: udemyLogo,
     link: "https://www.udemy.com/certificate/UC-df53cf97-6bfb-4112-80a9-08f91ed344ff/",
   },
   {
     name: "PyTorch for Deep Learning Bootcamp", issuer: "Zero to Mastery",
     year: "2025",
     icon: <Cpu size={16} />,
-    logo: udemyLogo,
     link: "https://www.udemy.com/certificate/UC-8f34eab4-ca85-4563-9143-3d418709075b/",
   },
   {
     name: "TensorFlow for Deep Learning Bootcamp", issuer: "Zero to Mastery",
     year: "2025",
     icon: <Layers size={16} />,
-    logo: udemyLogo,
     link: "https://www.udemy.com/certificate/UC-1679c1f9-0e48-4a7a-bc2f-34302e60ab2b/",
   },
   {
     name: "Mastering React & Node.js Firebase Authentication", issuer: "Udemy",
     year: "2025",
     icon: <Shield size={16} />,
-    logo: udemyLogo,
     link: "https://www.udemy.com/certificate/UC-c006a6db-1f94-4a53-9a90-082b35a9615d/",
   },
 ];
@@ -292,7 +312,7 @@ export default function HomePage() {
                 <span className="text-accent shrink-0"><BookOpen size={14} /></span>
                 <div className="overflow-hidden whitespace-nowrap">
                   <span className="inline-block animate-marquee">
-                    Studying: Azure certifications &nbsp;&nbsp;·&nbsp;&nbsp; Studying: Azure certifications
+                    2x Microsoft Fabric Certified & 1x AWS Certified &nbsp;&nbsp;·&nbsp;&nbsp; 2x Microsoft Fabric Certified & 1x AWS Certified
                   </span>
                 </div>
               </div>
@@ -546,14 +566,20 @@ export default function HomePage() {
             Certifications
           </h2>
           <p className="text-muted-foreground text-center max-w-xl mx-auto text-base md:text-lg">
-            Professional certifications and credentials.
+            Proctored certifications and course completions.
           </p>
 
+          <h3
+            className="text-sm font-semibold text-foreground"
+            style={{ letterSpacing: "-0.01em" }}
+          >
+            Proctored Certifications
+          </h3>
           <div className="grid md:grid-cols-2 gap-6">
-            {featuredCerts.map((cert, i) => (
+            {proctoredCerts.map((cert, i) => (
               <BentoCard key={i} className="flex items-start gap-5">
                 <div className="w-10 h-10 rounded-xl overflow-hidden shrink-0 bg-white/[0.04] border border-[var(--glass-border)] flex items-center justify-center">
-                  <Image src={cert.logo} alt={cert.name} width={40} height={40} className="object-contain p-1" style={{ width: "auto", height: "auto" }} />
+                  <span className="text-accent">{cert.icon}</span>
                 </div>
                 <div className="min-w-0">
                   <h3 className="text-lg font-semibold text-foreground">
@@ -563,12 +589,14 @@ export default function HomePage() {
                     {cert.issuer}
                   </p>
                   <div className="flex flex-wrap items-center gap-2 mt-2">
-                    <span
-                      className="inline-block text-[11px] text-muted-foreground bg-white/[0.06] px-2.5 py-1 rounded border border-white/[0.06]"
-                      style={{ fontFamily: "var(--font-jetbrains)" }}
-                    >
-                      {cert.year}
-                    </span>
+                    {cert.year && (
+                      <span
+                        className="inline-block text-[11px] text-muted-foreground bg-white/[0.06] px-2.5 py-1 rounded border border-white/[0.06]"
+                        style={{ fontFamily: "var(--font-jetbrains)" }}
+                      >
+                        {cert.year}
+                      </span>
+                    )}
                     {cert.link && (
                       <a
                         href={cert.link}
@@ -591,10 +619,10 @@ export default function HomePage() {
               className="text-sm font-semibold text-foreground mb-5"
               style={{ letterSpacing: "-0.01em" }}
             >
-              Other Certifications
+              Course Completions
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-              {otherCerts.map((cert, i) => (
+              {courseCompletions.map((cert, i) => (
                 <div
                   key={i}
                   className="glass-panel p-3.5 rounded-xl transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_0_20px_var(--accent-glow)] hover:border-accent/30"
