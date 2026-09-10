@@ -90,24 +90,33 @@ type Cert = {
   year?: string;
   link?: string;
   icon: JSX.Element;
+  logoUrl?: string;
 };
 
 const proctoredCerts: Cert[] = [
-  // TODO: add `year` and Microsoft Learn verify `link` for each Microsoft cert, and Credly `link` for AWS.
   {
     name: "Microsoft Certified: Fabric Analytics Engineer Associate",
     issuer: "DP-600 · Microsoft",
+    year: "2026",
+    link: "https://learn.microsoft.com/en-us/users/ridhwanrazali-6198/credentials/cb9eb705fd8bdd03?ref=https%3A%2F%2Fwww.linkedin.com%2F",
     icon: <Database size={16} />,
+    logoUrl: "https://learn.microsoft.com/en-us/media/learn/certification/badges/microsoft-certified-associate-badge.svg?branch=main",
   },
   {
     name: "Microsoft Certified: Fabric Data Engineer Associate",
     issuer: "DP-700 · Microsoft",
+    year: "2026",
+    link: "https://learn.microsoft.com/en-us/users/ridhwanrazali-6198/credentials/252d4000257134b7?ref=https%3A%2F%2Fwww.linkedin.com%2F",
     icon: <Cloud size={16} />,
+    logoUrl: "https://learn.microsoft.com/en-us/media/learn/certification/badges/microsoft-certified-associate-badge.svg?branch=main",
   },
   {
     name: "AWS Certified Cloud Practitioner",
     issuer: "Amazon Web Services",
+    year: "2026",
+    link: "https://www.credly.com/badges/b7d52e09-b9f4-414c-9656-c2ade892092e/public_url",
     icon: <BadgeCheck size={16} />,
+    logoUrl: "https://images.credly.com/size/340x340/images/00634f82-b07f-4bbd-a6bb-53de397fc3a6/image.png",
   },
 ];
 
@@ -156,6 +165,13 @@ const courseCompletions = [
     year: "2025",
     icon: <Shield size={16} />,
     link: "https://www.udemy.com/certificate/UC-c006a6db-1f94-4a53-9a90-082b35a9615d/",
+  },
+  {
+    name: "Google AI Professional Certificate",
+    issuer: "Coursera · Google",
+    year: "2026",
+    icon: <Brain size={16} />,
+    link: "https://www.coursera.org/account/accomplishments/professional-cert/ZB3GJVWYRUE1",
   },
 ];
 
@@ -579,7 +595,16 @@ export default function HomePage() {
             {proctoredCerts.map((cert, i) => (
               <BentoCard key={i} className="flex items-start gap-5">
                 <div className="w-10 h-10 rounded-xl overflow-hidden shrink-0 bg-white/[0.04] border border-[var(--glass-border)] flex items-center justify-center">
-                  <span className="text-accent">{cert.icon}</span>
+                  {cert.logoUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={cert.logoUrl}
+                      alt={`${cert.name} badge`}
+                      className="w-full h-full object-contain p-1"
+                    />
+                  ) : (
+                    <span className="text-accent">{cert.icon}</span>
+                  )}
                 </div>
                 <div className="min-w-0">
                   <h3 className="text-lg font-semibold text-foreground">
