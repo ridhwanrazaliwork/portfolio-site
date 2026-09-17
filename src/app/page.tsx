@@ -18,7 +18,7 @@ const education = [
     school: "Universiti Malaya",
     period: "2024 - Present",
     description:
-      "Focus: Deep Learning, Big Data Analytics, and Cloud Computing. CGPA: 3.87/4.00.",
+      "Focus: Deep Learning, Big Data Analytics, and Cloud Computing. CGPA: 3.90/4.00.",
     thesis: "Low Light Object Detection with YOLO",
     coursework: "Machine Learning for Data Science, Big Data Applications & Analytics, Data Mining, Programming for Data Science",
     logo: umLogo,

@@ -10,14 +10,18 @@ interface Props {
 
 const components = {
   pre: (props: React.HTMLAttributes<HTMLPreElement>) => (
-    <pre className="overflow-x-auto rounded-xl border border-white/[0.06] bg-[#0a0a0a] p-4 my-6 text-sm" {...props} />
+    <pre
+      {...props}
+      className="overflow-x-auto rounded-xl border border-white/[0.06] bg-[#0a0a0a] p-4 my-6 text-sm text-[#e6edf3]"
+      style={{ color: "#e6edf3" }}
+    />
   ),
   code: ({ className, children, ...props }: React.HTMLProps<HTMLElement>) => (
     <code className={className} {...props}>{children}</code>
   ),
   img: (props: React.ImgHTMLAttributes<HTMLImageElement>) => (
     // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text
-    <img className={`rounded-xl ${props.className || ""}`} {...props} />
+    <img className={`rounded-xl my-6 ${props.className || ""}`} {...props} />
   ),
 };
 

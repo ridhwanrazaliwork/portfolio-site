@@ -222,3 +222,10 @@ html.vt-theme.dark::view-transition-new(root) {
 .animate-marquee {
   animation: marquee 12s linear infinite;
 }
+
+/* Blog code blocks render on a fixed dark background, so keep the text light
+   regardless of the active theme (plain-text fences get no shiki token colors). */
+.prose pre,
+.prose pre code {
+  color: #e6edf3;
+}
