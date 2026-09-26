@@ -3,6 +3,7 @@ import { MDXRemote } from "next-mdx-remote/rsc";
 import matter from "gray-matter";
 import Link from "next/link";
 import rehypePrettyCode from "rehype-pretty-code";
+import remarkGfm from "remark-gfm";
 
 interface Props {
   params: { slug: string };
@@ -22,6 +23,57 @@ const components = {
   img: (props: React.ImgHTMLAttributes<HTMLImageElement>) => (
     // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text
     <img className={`rounded-xl my-6 ${props.className || ""}`} {...props} />
+  ),
+  table: (props: React.HTMLAttributes<HTMLTableElement>) => (
+    <div className="overflow-x-auto my-6">
+      <table
+        className="w-full text-sm border-collapse"
+        {...props}
+      />
+    </div>
+  ),
+  th: (props: React.ThHTMLAttributes<HTMLTableCellElement>) => (
+    <th
+      className="border-b border-white/[0.1] px-3 py-2 text-left font-semibold"
+      {...props}
+    />
+  ),
+  td: (props: React.TdHTMLAttributes<HTMLTableCellElement>) => (
+    <td
+      className="border-b border-white/[0.06] px-3 py-2 align-top"
+      {...props}
+    />
+  ),
+  h1: (props: React.HTMLAttributes<HTMLHeadingElement>) => (
+    <h1
+      className="text-3xl font-bold text-foreground mt-12 mb-4"
+      style={{ letterSpacing: "-0.02em" }}
+      {...props}
+    />
+  ),
+  h2: (props: React.HTMLAttributes<HTMLHeadingElement>) => (
+    <h2
+      className="text-2xl font-bold text-foreground mt-10 mb-4"
+      style={{ letterSpacing: "-0.02em" }}
+      {...props}
+    />
+  ),
+  h3: (props: React.HTMLAttributes<HTMLHeadingElement>) => (
+    <h3
+      className="text-xl font-bold text-foreground mt-8 mb-3"
+      style={{ letterSpacing: "-0.02em" }}
+      {...props}
+    />
+  ),
+  h4: (props: React.HTMLAttributes<HTMLHeadingElement>) => (
+    <h4
+      className="text-lg font-semibold text-foreground mt-6 mb-3"
+      style={{ letterSpacing: "-0.02em" }}
+      {...props}
+    />
+  ),
+  p: (props: React.HTMLAttributes<HTMLParagraphElement>) => (
+    <p className="my-4 leading-7" {...props} />
   ),
 };
 
@@ -121,6 +173,7 @@ export default async function BlogPost({ params }: Props) {
             components={components}
             options={{
               mdxOptions: {
+                remarkPlugins: [remarkGfm],
                 rehypePlugins: [
                   [
                     rehypePrettyCode,

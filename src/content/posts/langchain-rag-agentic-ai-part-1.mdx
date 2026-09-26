@@ -1,0 +1,261 @@
+---
+title: "Learning Agentic AI and RAG course Part 1"
+date: "2026-09-25"
+description: "A beginner-friendly walkthrough of prompting strategies and LangChain basics: RAG, memory, chains, and agents."
+tags: ["LangChain", "RAG", "Agentic AI", "LLM"]
+---
+
+I have been taking the course "IBM RAG and Agentic AI" on Coursera, to take full advantage of my 3 months Coursera free access.
+
+In my opinion this is a very good course for learning Agentic AI, RAG and MCP as it's a very beginner friendly. It was published around 2025, as there might be some outdated information in the course. 
+
+Highly recommended for you to check it out.
+
+Below is the TLDR beginner-friendly version of Chapter 1 for this course.
+
+**Setup that I use to run it in my local pc (used in all examples below as `llm`):**
+
+```python
+import os
+from dotenv import load_dotenv
+from langchain_openai import ChatOpenAI
+
+load_dotenv()  # loads OPENROUTER_API_KEY from .env
+
+llm = ChatOpenAI(
+    model="qwen/qwen3.7-flash",
+    openai_api_base="https://openrouter.ai/api/v1",
+    openai_api_key=os.environ["OPENROUTER_API_KEY"],
+    max_tokens=256,
+    temperature=0.2,
+)
+```
+
+---
+
+## Prompting strategies: teaching by showing, not teaching by training
+
+**ELI5:** you don't retrain the model (which could be expensive and complex). You just talk to it differently — like showing a student past exam answers before the test. With the same model we give it a different prompts resulting in a different results.
+
+| Strategy | ELI5 | Example |
+| :--- | :--- | :--- |
+| **Basic** | Just finish my sentence | `"The wind is"` |
+| **Zero-shot** | Give the task, no examples | `"Classify as true or false: 'The Eiffel Tower is in Berlin.'"` |
+| **One-shot** | Show one example so it copies the format | `"English: 'How is the weather?' -> French: 'Comment est le temps?'\nEnglish: 'Where is the nearest supermarket?' -> French:"` |
+| **Few-shot** | Show 2-5 examples so the pattern is unmistakable | A few `Statement -> Emotion` pairs, then let it classify the last one |
+| **Chain-of-Thought** | Ask it to show its working, like a math teacher | `"A store had 22 apples, sold 15, got 8 more. Break down each step."` |
+
+Few-shot is one of the useful one here in my opinion — models are great at copying things. Give two or three input-output examples and it locks onto your format. Chain-of-thought forces the model to reason step by step instead of blurting an answer, which helps a lot on simple math and logic.
+
+All of this is **in-context learning**: zero training, zero fine-tuning. The examples you paste into the prompt *are* the lesson.
+
+---
+
+## Chat models & messages
+
+**ELI5:** Imagine that the model has an amnesia or doesn't remember the context every time you are talking to it. It forgets everything between requests, so a "conversation" is just you re-reading the whole chat log to it every time.
+
+Messages are labeled lines in that log:
+
+```python
+from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
+
+msg = llm.invoke([
+    SystemMessage(content="You are a supportive fitness coach in one short sentence"),
+    HumanMessage(content="I like high-intensity workouts, what should I do?"),
+    AIMessage(content="You should try a CrossFit class"),
+    HumanMessage(content="How often should I attend?"),
+])
+```
+
+- `SystemMessage` = the rulebook ("act like a coach").
+- `HumanMessage` = what you said.
+- `AIMessage` = what the bot said (you repeat it back so it "remembers").
+
+One extra knob worth knowing: **temperature**. It's the randomness dice — low (0.1) makes it boringly consistent, high (0.8) makes it creative. Use low for facts and instructions, high for creative writing.
+
+---
+
+## Prompt templates & output parsers
+
+**ELI5:** a template is a fill in the blank form. An output parser tells the model on how to write it (Example: in JSON format) and transform the response.
+
+```python
+from langchain_core.prompts import PromptTemplate
+from langchain_core.output_parsers import JsonOutputParser
+
+parser = JsonOutputParser()
+chain = PromptTemplate.from_template(
+    "Return JSON about the movie {movie_name} with keys title, director, year."
+    "\n{format_instructions}"
+).partial(format_instructions=parser.get_format_instructions()) | llm | parser
+
+chain.invoke({"movie_name": "The Matrix"})  # -> a real Python dict
+```
+
+Instead of manually parsing text, the parser attaches instructions to the prompt so the model returns structured JSON. You can read the output directly as a dictionary.
+
+---
+
+## RAG: making the model read your documents
+
+**ELI5:** Like an open-book exam. The model doesn't know your document, so you find the relevant pages and hand them over with the question.
+
+The whole flow is 4 steps:
+
+1. **Cut** the document into small pieces (chunks).
+2. **Translate** each piece into a list of numbers that capture its meaning (embeddings).
+3. **Search** — turn the question into numbers too, and grab the closest chunks.
+4. **Answer** — give those chunks plus the question to the LLM.
+
+```python
+from langchain_community.document_loaders import PyPDFLoader
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.vectorstores import Chroma
+
+chunks = RecursiveCharacterTextSplitter(
+    chunk_size=500, chunk_overlap=50
+).split_documents(PyPDFLoader(paper_url).load())
+
+docsearch = Chroma.from_documents(chunks, embeddings)  # embeddings = number translator
+
+retriever = docsearch.as_retriever()
+```
+
+Why cut at all? Short pieces translate to sharper meaning-numbers (better search), but the LLM needs enough context to answer properly. LangChain's `ParentDocumentRetriever` gets the best of both: search over small chunks for precision, then hand back the bigger parent document they came from for context.
+
+And if you don't want to wire the steps yourself, `RetrievalQA` which is a built in method bundles all four into one object:
+
+```python
+from langchain.chains import RetrievalQA
+
+qa = RetrievalQA.from_chain_type(llm=llm, chain_type="stuff", retriever=retriever)
+qa.invoke("what is this paper discussing?")
+```
+
+Behind the scenes it grabs the most similar chunks, pastes them into the prompt, and asks the model to answer using them. It feels similar to how NotebookLM or Gemini notebook tools use it.
+
+---
+
+## Memory
+
+**ELI5:** the model has amnesia or doesn't have a memory — to fix this, in every conversation turn you send back the whole conversation transcript onto the prompt.
+
+```
+Turn 1: You ask a question
+ ┌──────────────┐
+ │ You: "Hi!"   │ ──────► [ MODEL ] ──► "Hello!"
+ └──────────────┘             │
+                       (Instantly forgets)
+
+ Turn 2: You ask a follow-up
+ ┌──────────────────────┐
+ │ You: "Hi!"           │
+ │ Model: "Hello!"      │ ──────► [ MODEL ] ──► "I'm AI!"
+ │ You: "Who are you?"  │             │
+ └──────────────────────┘       (Instantly forgets)
+
+ Turn 3: You ask another question
+ ┌──────────────────────┐
+ │ You: "Hi!"           │
+ │ Model: "Hello!"      │
+ │ You: "Who are you?"  │ ──────► [ MODEL ] ──► "Chatting with you!"
+ │ Model: "I'm AI!"     │             │
+ │ You: "What are we    │       (Instantly forgets)
+ │        doing?"       │
+ └──────────────────────┘
+```
+
+```python
+from langchain.memory import ConversationBufferMemory
+from langchain.chains import ConversationChain
+
+conversation = ConversationChain(llm=llm, memory=ConversationBufferMemory())
+conversation.invoke("Hello, I am a little cat. Who are you?")
+conversation.invoke("Who am I?")  # "a little cat!" — it "remembers"
+```
+
+It doesn't actually remember anything — the entire history was silently re-sent. That works great until the transcript gets long, and then you hit two walls: the history eventually overflows the model's context window, and you pay for every token of it on every single turn.
+
+LangChain ships a few memory types to handle this:
+
+| Memory type | Trick | Trade-off |
+| :--- | :--- | :--- |
+| `ConversationBufferMemory` | Re-send everything | Simple, but grows forever |
+| Window memory | Keep only the last N turns | Old details dropped |
+| `ConversationSummaryMemory` | LLM compresses old turns into a summary | Extra LLM calls, lossy |
+
+---
+
+## Chains
+
+**ELI5:** an assembly line — basically the output of the first is passed to the next step input and so on, like dominoes or a chain.
+
+```
+ Start: {"location": "Malaysia"}
+   │
+   ▼
+ ┌───────────────────────────┐
+ │ STEP 1: dish_chain        │
+ └───────────────────────────┘
+   │  Adds "meal" to context
+   ▼
+ Context: {"location": "Malaysia", "meal": "Nasi Lemak"}
+   │
+   ▼
+ ┌───────────────────────────┐
+ │ STEP 2: recipe_chain      │
+ └───────────────────────────┘
+   │  Adds "recipe" to context
+   ▼
+ Final Result: {
+   "location": "Malaysia",
+   "meal": "Nasi Lemak",
+   "recipe": "1. Add Santan..."
+ }
+```
+
+```python
+from langchain_core.output_parsers import StrOutputParser
+
+dish_chain = (
+    PromptTemplate.from_template("Come up with a classic dish from {location}.")
+    | llm
+    | StrOutputParser()
+)
+
+dish_chain.invoke({"location": "China"})  # -> "Peking duck"
+```
+
+Bigger workflows chain more of these pipes together. Want dish → recipe → cooking time? Each step adds its result to a running dictionary, and the next prompt reads it:
+
+```python
+from langchain_core.runnables import RunnablePassthrough
+
+overall = (
+    RunnablePassthrough.assign(meal=lambda x: dish_chain.invoke({"location": x["location"]}))
+    | RunnablePassthrough.assign(recipe=lambda x: recipe_chain.invoke({"meal": x["meal"]}))
+)
+overall.invoke({"location": "China"})  # -> {"location": ..., "meal": ..., "recipe": ...}
+```
+
+LangChain also has older `LLMChain`/`SequentialChain` classes that do the same thing, but the pipe style (LCEL format) is easier to read and to debug.
+
+---
+
+## Tools & agents
+
+**ELI5:** a chatbot can *talk* about things; an agent can *do* things. Tools are functions you hand the model — a calculator, a weather lookup — and the agent is the model deciding for itself which one to use, in a loop of think → act → look at the result (ReACT).
+
+```python
+from langchain.tools import tool
+
+@tool
+def search_weather(location: str):
+    """Search for the current weather in the specified location."""
+    return f"The weather in {location} is sunny and 72°F."
+```
+
+The description string matters — that's the only thing the agent reads to decide when to call it. You give it a list of tools, ask something like *"What is 3.1 × 4.2? Also, is it sunny in Tokyo?"*, and it works through it on its own: it calls the calculator, reads the result, calls the weather tool, then answers.
+
+The loop looks like this: the model **thinks** about the problem, picks an **action** (a tool + input), gets the **observation** (the tool's result), and repeats until it can give a final answer. LangChain's `AgentExecutor` runs that loop for you — parse the tool call, run the tool, feed the result back, stop when done. The model plans, the tools execute. That think-act-observe loop is the seed of everything the multi-agent frameworks (LangGraph, CrewAI, AutoGen) build on later.

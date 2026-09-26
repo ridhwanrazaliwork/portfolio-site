@@ -122,6 +122,13 @@ const proctoredCerts: Cert[] = [
 
 const courseCompletions = [
   {
+    name: "Google AI Professional Certificate",
+    issuer: "Coursera · Google",
+    year: "2026",
+    icon: <Brain size={16} />,
+    link: "https://www.coursera.org/account/accomplishments/professional-cert/ZB3GJVWYRUE1",
+  },
+  {
     name: "MLOps Bootcamp",
     issuer: "MLflow, Airflow, Docker, GitHub Actions CI/CD",
     year: "2026",
@@ -165,13 +172,6 @@ const courseCompletions = [
     year: "2025",
     icon: <Shield size={16} />,
     link: "https://www.udemy.com/certificate/UC-c006a6db-1f94-4a53-9a90-082b35a9615d/",
-  },
-  {
-    name: "Google AI Professional Certificate",
-    issuer: "Coursera · Google",
-    year: "2026",
-    icon: <Brain size={16} />,
-    link: "https://www.coursera.org/account/accomplishments/professional-cert/ZB3GJVWYRUE1",
   },
 ];
 
