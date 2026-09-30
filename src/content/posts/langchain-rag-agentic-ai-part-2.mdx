@@ -1,0 +1,3711 @@
+---
+title: "Learning Agentic AI and RAG course Part 2"
+date: "2026-09-30"
+description: "Beginner-friendly notes on RAG end to end: chunks, embeddings, vector databases, similarity metrics, and the advanced retrievers (BM25, MMR, fusion, auto-merge) that go beyond plain top-k search."
+tags: ["RAG", "Vector Databases", "ChromaDB", "FAISS", "Retrievers"]
+---
+
+This is Part 2 of my notes on the IBM RAG & Agentic AI course on Coursera (see Part 1 for the LangChain basics). I merged three chapters of the course into one post because they're one continuous topic of RAG: Chapter 2 builds the first real RAG app. Chapter 3 explains about the vector database. And Chapter 4 explains the retrieval itself — the advanced retrievers (BM25, MMR, auto-merging, query fusion).
+
+---
+
+## Chapter 2
+
+### Why not just paste everything into the prompt?
+
+**ELI5:** you *could* hand the model the whole document instead of the one relevant page. Modern models accept huge contexts (128k tokens ≈ 96k words), but that would hit some limitation:
+
+| Problem | Big-context approach | How RAG fixes it |
+| :--- | :--- | :--- |
+| **You provide the text** | User must manually copy sources into the prompt | RAG pulls from a database automatically |
+| **Books don't fit** | Example *War & Peace* book is ~560k words — over the limit even for big models | Chunks the text, retrieves only the relevant parts |
+| **Clutter** | Extra text dilutes focus and could also cause the model to hallucinate — needle in a haystack | Isolates the relevant details, drops the noise |
+| **Speed & cost** | Huge prompts = slower and pricier per call | Small targeted prompts = faster and cheaper |
+
+And the reason RAG is worth the setup at all: grounded answers beat the model guessing. Static models rely only on training data, so they go stale, hallucinate, and can't show sources. RAG gives you **accuracy** (answers grounded in real data), **freshness** (live data, no retraining), and **traceability** (you can cite exactly which chunk the answer came from).
+
+---
+
+### How text becomes numbers
+
+**ELI5:** computers can't compare "meaning" — only numbers. So the pipeline converts words into coordinates, and "similar meaning" becomes "mathematically close together."
+
+```text
+Raw Text  ---> [ Tokenization ] ---> Token IDs  ---> [ Neural Network ] ---> Vector Embeddings
+("Policy")     (Splits into units)   ([1042, 88])    (Embedding Model)      ([0.23, -0.81, 0.45])
+```
+
+**Tokenization — cutting text into numbered puzzle pieces.** The tokenizer breaks raw text into units (words, sub-words, characters) and maps each one to an arbitrary integer ID. The important catch: a token ID carries **no meaning**. `apple = 452` doesn't make apple "bigger" than `banana = 7` — it's just a label, like a seat number in a stadium.
+
+```text
+Text: "I am running fast"
+
+1. Subword Split:  ["I", " am", " run", "ning", " fast"]
+2. Integer IDs:    [40,  1097,   1648,   3084,   3039]
+```
+
+**Embedding — turning IDs into meaning-numbers.** The embedding model is a neural network that takes token IDs in and outputs a **vector**: a list of floats like `[0.12, -0.45, 0.89, ...]`. Unlike token IDs, these numbers *do* encode meaning — text with similar meaning lands close together in high-dimensional space. So "How do I reset my password?" sits near the chunk that actually explains password resets, even if no words overlap.
+
+---
+
+### The 5-step RAG data pipeline
+
+Putting it together for a real app (say, a 50-page employee policy document):
+
+1. **Chunk** — split the document into small targeted sections. Short pieces give sharper meaning-numbers (better search), and retrieval only pays for what's relevant.
+2. **Tokenize** — each chunk is converted into token IDs.
+3. **Embed** — the neural network turns those IDs into vector embeddings.
+4. **Store & search** — chunk vectors live in a vector database (ChromaDB, FAISS, Milvus...). When a user asks something, their prompt becomes a vector too (same embedding model!), and the database finds the context vectors closest in meaning — measured by distance metrics like cosine similarity.
+5. **Generate** — the retrieved chunks + the user's question are merged into one augmented prompt and sent to the LLM, which answers grounded in the retrieved text.
+
+Step 4 is the part people forget: **the query must use the same embedding model as the stored chunks** — otherwise the coordinates live in different spaces and "closest" means nothing. (Same rule shows up again later — it's the #1 RAG pitfall.)
+
+---
+
+### LangChain vs LlamaIndex
+
+**ELI5:** two frameworks that build the same pipeline, with opposite philosophies. LangChain is a giant toolbox — you pick every tool and wire it yourself, basically if u want more flexibility you might choose this. LlamaIndex is an appliance — press one button, it does the sensible default thing, for a quick project LlamaIndex might be the option to consider.
+
+So here's how the two compare at each RAG stage:
+
+**Loading documents.**
+
+- LangChain takes a modular approach — you pick a specific, purpose-built loader for every file type (TextLoader, CSVLoader, WebBaseLoader, DoclingLoader for PDFs/Office docs, or connectors for SQL/S3).
+- LlamaIndex focuses on simplicity out of the box — its SimpleDirectoryReader automatically detects and parses PDFs, Word docs, PowerPoint slides, and Markdown files from a single folder with zero extra setup. For niche sources (like RSS feeds or specific databases), you grab specialized integrations from LlamaHub.
+
+**Chunking.** Same idea, different names — LlamaIndex calls chunks **nodes**.
+
+- LangChain gives you an explicit toolkit of splitters: standard character and token splitters, **RecursiveCharacterTextSplitter** (start here — it's the one you'll reach for 90% of the time; it cascades through `\n\n`, `\n`, space, and punctuation to keep paragraphs intact), structure-aware splitters for Markdown/HTML/JSON, and SemanticChunker (which splits based on drops in vector similarity).
+- LlamaIndex relies on SentenceSplitter as its default (similar to LangChain's recursive splitter, but token-aware out of the box), alongside specialized Node Parsers for structural formats. If you prefer LangChain's chunking logic, LlamaIndex provides a LangChainNodeParser wrapper to run any LangChain splitter natively inside its pipeline.
+
+**Embedding & vector storage.** The biggest workflow difference comes down to automation vs. explicit control.
+
+- LlamaIndex combines embedding and indexing into a single high-level command: `index = VectorStoreIndex(nodes)`. It handles metadata automatically, defaults to in-memory storage, and lets you swap to production backends (Chroma, FAISS, Milvus) later without altering downstream code.
+- LangChain keeps embedding and storage explicit: `Chroma.from_documents(chunks, embeddings)`. Each backend uses its own dedicated class (Chroma, FAISS, InMemoryVectorStore), giving you granular control over the configuration at the expense of slightly more boilerplate.
+
+**Retrieval.** Nearly identical: both do top-k similarity search through a retriever (`docsearch.as_retriever()` vs `index.as_retriever()`), and the query gets embedded with the index's own embedding model implicitly. Both support advanced patterns too — e.g. LangChain's parent-document retriever returns the bigger parent document instead of the matching sub-chunk.
+
+**Augment & generate.** "Augmenting" simply means taking the retrieved text chunks and stuffing them into the prompt along with the user's question before calling the LLM:
+
+- LangChain (Explicit Assembly Line): Keeps retrieval and prompt-building separate. You manually retrieve the chunks, format your own prompt template (e.g., using LCEL pipes), and call `llm.invoke(messages)`. It takes more code, but you have 100% control over the exact prompt formatting.
+- LlamaIndex (All-in-One Engine): Combines retrieval, prompt augmentation, and the LLM response into one packaged method: `engine = index.as_query_engine()`, followed by `engine.query(...)`. It acts like a "magic button" — fastest to get running, though customizing internal prompt templates requires dipping into lower-level modules (like ResponseSynthesizer).
+
+| Feature | LangChain | LlamaIndex |
+| :--- | :--- | :--- |
+| **Execution** | **Decoupled:** You format the augmented prompt yourself, then invoke the LLM | **Coupled:** `as_query_engine()` retrieves, augments, and queries in 1 step |
+| **Custom Templates** | **Trivial:** Plain strings or `PromptTemplate` pipes | **Internal:** Modifies internal `Response Synthesizer` settings |
+| **Developer Experience** | High control, legible steps, slightly more boilerplate | "Magic button," fastest time-to-ship, abstract internals |
+
+**My takeaway:** for a first RAG app, LlamaIndex gets you from zero to working query engine in a handful of lines. But the explicit LangChain style is easier to debug and customize step by step.
+
+---
+
+## Chapter 3
+
+### What's inside a vector database (vs a normal database)
+
+**ELI5:** a relational database is a filing cabinet — rows and columns of exact values, and every query is an exact match ("give me the row where `user_id = 42`"). A vector database is a map of coordinates — nothing matches exactly and things are *close*, and "close" means "similar in meaning."
+
+| Feature | Traditional Relational DB | Vector DB |
+| :--- | :--- | :--- |
+| **Representation** | Structured tables (rows, columns), schemas with primary/foreign keys | High-dimensional vectors from ML models (transformers), compared as coordinates in multi-dimensional space |
+| **Search** | Exact-match SQL (`SELECT`, `WHERE`) | Similarity / nearest-neighbor search with distance metrics |
+| **Indexing** | B-trees, hash indices — optimized for scalar values | Specialized high-dimension structures (metric trees, graph-based ANN like HNSW) |
+| **Scalability** | Vertical scale-up or complex sharding | Designed for horizontal scaling across huge datasets |
+| **Sweet spot** | ACID transactions, ERP, financial records, business workflows | Semantic search, recommendations, image retrieval, NLP, anomaly detection |
+
+#### Vector Library vs. Vector Database
+
+```text
+ ┌─────────────────────────────────────────┐
+ │ VECTOR LIBRARY (e.g., FAISS, Annoy)     │
+ │                                         │
+ │  ┌───────────────────────────────────┐  │
+ │  │ Fast Similarity Math (HNSW/IVF)   │  │
+ │  └───────────────────────────────────┘  │
+ │  • In-memory execution                  │
+ │  • Lost when script finishes            │
+ └─────────────────────────────────────────┘
+                    ▲
+                    │  (Vector Database wraps the library)
+                    │
+ ┌─────────────────────────────────────────┐
+ │ VECTOR DATABASE (e.g., Qdrant, Chroma)  │
+ │                                         │
+ │  ┌───────────────────────────────────┐  │
+ │  │ Fast Similarity Math (FAISS/HNSW) │  │
+ │  └───────────────────────────────────┘  │
+ │  ┌───────────────────────────────────┐  │
+ │  │ + Disk Storage & Persistence      │  │
+ │  │ + Full CRUD (Create, Read, Delete)│  │
+ │  │ + Metadata Filtering              │  │
+ │  │ + Multi-user Concurrency & Scale  │  │
+ │  └───────────────────────────────────┘  │
+ └─────────────────────────────────────────┘
+```
+
+---
+
+### Similarity search — how "closest" is measured
+
+**ELI5:** Every vector has two parts:
+
+- **Direction:** Encodes *what it's about* (the semantic topic/meaning).
+- **Magnitude (Length):** Encodes *intensity or scale* (confidence, word count, popularity).
+
+Different similarity metrics evaluate these two traits differently — picking the wrong metric for your vector space is a silent bug.
+
+**Terminology:**
+
+- **Distance Metric:** Farther apart = **larger** number (0 = identical).
+- **Similarity Metric:** More alike = **larger** number (1.0 = identical).
+- *Convertible relationship:* `Distance = 1 - Similarity` (for normalized metrics).
+
+```text
+              Y-Axis
+                ▲
+                │         Vector B: "I love cats!"
+                │        / [Longer Magnitude / High Confidence]
+                │       /
+                │      /   Vector A: "Cats are great"
+                │     /   / [Same Direction = Same Topic!]
+                │    /   /
+                │   /  /
+                │  / /
+                │ /╱ ── Theta (θ) Angle
+                └──────────────────────────► X-Axis
+
+  - COSINE SIMILARITY: Measures ONLY the angle (θ).
+    Vectors A and B have near-1.0 Cosine Similarity (same direction).
+
+  - EUCLIDEAN DISTANCE (L2): Measures spatial distance between tips.
+    Vectors A and B have a large Euclidean Distance due to magnitude difference!
+```
+
+```text
+                Y-Axis
+                  ▲
+                  │              Tip of Vector B
+                  │             /
+                  │            /
+                  │           /  |
+                  │          /   |
+                  │         /    | ◄─── EUCLIDEAN DISTANCE (L2)
+                  │        /     |      This is the straight ruler
+                  │       /      |      distance between the two
+                  │      /       │      arrowheads/tips!
+                  │     /        │
+                  │    /   Tip of Vector A
+                  │   /   /
+                  │  /  /
+                  │ / ╱
+                  └──────────────────────────────► X-Axis
+                 (0,0)
+```
+
+#### Why this creates a bug
+
+Imagine two sentences about the exact same topic (cats):
+
+- **Sentence A (short):** "Cats are great."
+- **Sentence B (long/repetitive):** "Cats are great, cats are awesome, cats are fantastic!"
+
+Because both sentences are strictly about cats, their directions are identical (the arrows point the exact same way).
+
+- **Cosine Similarity:** Looks at the angle ($0^\circ$). It sees they point in the exact same direction and says: *"These match 100%!"*
+- **Euclidean Distance:** Measures the distance between the two arrowheads. Because Sentence B is much longer, its vector is physically longer. The distance between the arrowheads is large, so it says: *"These are very far apart!"*
+
+That's why if you care about **pure topic/meaning match regardless of text length**, Cosine Similarity is usually preferred over Euclidean Distance.
+
+#### A. L2 Distance (Euclidean) — the ruler
+
+**ELI5:** straight-line ruler distance between the two points. "How far do I have to travel from A to B?"
+
+A vector's length from the origin (the Euclidean / $L_2$ norm) falls out of the Pythagorean theorem:
+
+$$
+\Vert{}a\Vert{} = \sqrt{\sum_{k=1}^{n} a_k^2}
+$$
+
+For $a = [4, 8]$ in 2D: $\Vert{}a\Vert{} = \sqrt{4^2 + 8^2} = \sqrt{16 + 64} = \sqrt{80} \approx 8.94$.
+
+The distance between two vectors is the same idea, endpoint to endpoint:
+
+$$
+L_2(a, b) = \sqrt{\sum_{i=1}^{n} (a_i - b_i)^2}
+$$
+
+- 2D, $a = [4, 8]$, $b = [11.5, 5]$: $L_2(a, b) = \sqrt{(4 - 11.5)^2 + (8 - 5)^2} = \sqrt{56.25 + 9} = \sqrt{65.25} \approx 8.08$
+- 3D, $q = [1, 2, 3]$, $r = [4, 5, 6]$: $L_2(q, r) = \sqrt{9 + 9 + 9} = \sqrt{27} \approx 5.20$
+
+**Sensitive to:** both magnitude and direction.
+
+**Best for:** physical/spatial data — coordinates, geometric clustering, computer-vision point tracking.
+
+- Example in computer vision: If tracking an eye location from $(100, 200)$ to $(105, 202)$, you care about the exact physical distance in pixels. Angle alone is meaningless here.
+- If incorrectly used on Text: Long documents get penalized. A 10-page article about cars and a 1-sentence tweet about cars point in the same direction, but their $L_2$ distance will be massive because of length. $L_2$ will incorrectly report that they are completely unrelated.
+
+#### B. Dot Product — same direction, and how strong
+
+**ELI5:** two vectors score well together when they point the same way *and* are both long. Alignment × strength in one number.
+
+$$
+a \cdot b = \sum_{i=1}^{n} a_i b_i
+$$
+
+- 2D, $a = [4, 8]$, $b = [11.5, 5]$: $(4 \times 11.5) + (8 \times 5) = 46 + 40 = 86$
+- 3D, $q = [1, 2, 3]$, $r = [4, 5, 6]$: $4 + 10 + 18 = 32$
+
+Geometrically, the dot product is the magnitude of $b$ times the length of $a$'s shadow (projection) on $b$ — with $\Vert{}c\Vert{} = \Vert{}a\Vert{}\cos(\alpha)$:
+
+$$
+a \cdot b = \Vert{}a\Vert{} \Vert{}b\Vert{} \cos(\alpha)
+$$
+
+Cross-check with the 2D example: $\Vert{}a\Vert{} \approx 8.94$, $\Vert{}b\Vert{} = \sqrt{11.5^2 + 5^2} \approx 12.54$, $\alpha = 39.94^\circ$, so $a \cdot b \approx 8.94 \times 12.54 \times 0.767 \approx 85.99 \approx 86$. Same answer, two routes.
+
+**Sensitive to:** both magnitude and direction.
+
+**It's a similarity metric** — to use it as a distance, negate it: $\text{Distance}_{\text{dot}} = -(a \cdot b)$.
+
+**Best for:** recommendation systems (product popularity, model confidence).
+
+- Why Recommenders & Product Popularity use it: In e-commerce or streaming (Netflix/Amazon), a vector's direction represents user interest/item category, while its magnitude represents popularity, rating, or engagement strength.
+- Example: User likes Action Movies. Movie A is an obscure Action film (small magnitude). Movie B is a massive Action blockbuster (huge magnitude). Dot Product multiplies alignment by magnitude, ranking the popular blockbuster higher.
+- If incorrectly used on Variable-Length Documents: Long, wordy articles naturally generate larger magnitude vectors. Dot Product will heavily bias results toward long documents over short, highly relevant ones, simply because the long document has a larger vector length.
+
+#### C. Cosine Similarity — only the angle
+
+**ELI5:** ignore how long the vectors are; just measure the angle between them. "Do they point the same way?" A short document about pandas and a long one about pandas should match.
+
+$$
+\text{Cosine Similarity}(a, b) = \frac{a \cdot b}{\Vert{}a\Vert{} \Vert{}b\Vert{}}
+$$
+
+As a distance metric (bigger = farther): $\text{Cosine Distance}(a, b) = 1 - \text{Cosine Similarity}(a, b)$.
+
+The neat trick: dividing a vector by its own norm makes it a **unit vector** (length exactly 1):
+
+$$
+\text{norm}(a) = \frac{a}{\Vert{}a\Vert{}}
+$$
+
+With normalized vectors the denominator becomes 1, and cosine similarity collapses into a plain dot product:
+
+$$
+\text{Cosine Similarity}(a, b) = \text{norm}(a) \cdot \text{norm}(b)
+$$
+
+**Invariant to scale** (length-blind, purely orientation/direction).
+
+**Best for:** high-dimensional sparse data — text embeddings, TF-IDF, semantic search — where document length shouldn't bias the match. It also avoids the **curse of dimensionality**: in very high dimensions, plain $L_2$ distances between points start looking the same and can no longer tell items apart.
+
+- Why Semantic Text Search uses it: It strips away length bias completely.
+- Example: A 500-word blog post about Python and a 5,000-word documentation page about Python point in the exact same direction. Cosine Similarity gives them a near-perfect match score (1.0).
+- If incorrectly used on Recommenders: It ignores user engagement strength or item popularity. An unrated, obscure movie with 1 view will rank the same as an award-winning blockbuster with 1,000,000 views if their genre vectors point in the same direction.
+
+### What Happens When You Use the Wrong Metric (Silent Bugs)
+
+#### Scenario 1: Search Engine (Query: "Python Data Science")
+
+| Metric Used | Output Result | Is it correct? |
+| :--- | :--- | :--- |
+| **Cosine Similarity** *(Correct)* | Concise 2-page Python Cheat Sheet | **YES** — Accurate topic match |
+| **Dot Product** *(Incorrect)* | 800-page generic computer textbook mentioning "Python" | **BUG** — Biased toward sheer length/magnitude |
+
+#### Scenario 2: Movie Recommendation System
+
+| Metric Used | Output Result | Is it correct? |
+| :--- | :--- | :--- |
+| **Dot Product** *(Correct)* | Top-rated Blockbuster Sci-Fi Movie | **YES** — High category match + high user rating |
+| **Cosine Similarity** *(Incorrect)* | Obscure 1970s Indie Sci-Fi with 2 total views | **BUG** — Ignores rating/quality, matches purely on genre angle |
+
+---
+
+### Chroma DB
+
+**ELI5:** Chroma is a small, local vector database that behaves like a smart dictionary: you store documents with optional labels (metadata), and you can search it three ways — by meaning (similarity), by label (metadata filters), or by raw text (full-text filters).
+
+#### Filtering: two kinds of WHERE clauses
+
+- **Metadata filtering (`where`)** — filters on structured key-value labels you attach to each document, like a SQL `WHERE` clause.
+- **Document filtering (`where_document`)** — full-text search directly on the document text (case-sensitive substring match, like SQL `LIKE`).
+
+| Type | Operators | Example |
+| :--- | :--- | :--- |
+| **Comparison** | `$eq`, `$ne`, `$gt`, `$gte`, `$lt`, `$lte` | `{"version": {"$lt": 0.3}}` (default is `$eq`) |
+| **List membership** | `$in`, `$nin` | `{"source": {"$in": ["langchain.com", "llamaindex.ai"]}}` |
+| **Document content** | `$contains`, `$not_contains` | `{"$contains": "pandas"}` (case-sensitive) |
+| **Logical combination** | `$and`, `$or` | `{"$and": [filter1, filter2]}` |
+
+These filters work across `.get()`, `.query()`, and `.delete()` — so the same filter that narrows a search also scopes a deletion.
+
+**One setup + filtering demo:**
+
+```python
+import chromadb
+from chromadb.utils import embedding_functions
+
+client = chromadb.Client()
+ef = embedding_functions.SentenceTransformerEmbeddingFunction(
+    model_name="all-MiniLM-L6-v2"
+)
+
+collection = client.create_collection(
+    name="filter_demo",
+    configuration={"embedding_function": ef},
+)
+
+collection.add(
+    documents=[
+        "This is a document about LangChain",
+        "This is a reading about LlamaIndex",
+        "This is a book about Python",
+        "This is a document about pandas",
+        "This is another document about LangChain",
+    ],
+    metadatas=[
+        {"source": "langchain.com", "version": 0.1},
+        {"source": "llamaindex.ai", "version": 0.2},
+        {"source": "python.org", "version": 0.3},
+        {"source": "pandas.pydata.org", "version": 0.4},
+        {"source": "langchain.com", "version": 0.5},
+    ],
+    ids=["id1", "id2", "id3", "id4", "id5"],
+)
+
+# Metadata filter: specific sources AND version < 0.3
+collection.get(
+    where={
+        "$and": [
+            {"source": {"$in": ["langchain.com", "llamaindex.ai"]}},
+            {"version": {"$lt": 0.3}},
+        ]
+    }
+)
+
+# Full-text filter: case-sensitive keyword match
+collection.get(where_document={"$contains": "pandas"})
+
+# Combined: version > 0.1 AND text mentions LangChain or Python
+collection.get(
+    where={"version": {"$gt": 0.1}},
+    where_document={
+        "$or": [{"$contains": "LangChain"}, {"$contains": "Python"}]
+    },
+)
+```
+
+#### When similarity search lies: the polysemy trap
+
+**ELI5:** vector search matches *meaning*, but short queries can grab the wrong meaning of a word. Query `"polar bear"` and the top hit might be documentation for the **Polars** DataFrame library — the words sound alike, the meaning is nothing like it.
+
+The fix is layering filters on top of the similarity search:
+
+```python
+# Hybrid fix: constrain topic by metadata AND ban the misleading keyword
+collection.query(
+    query_texts=["polar bear"],
+    n_results=1,
+    where={"topic": "animals"},
+    where_document={"$not_contains": "library"},
+)
+```
+
+Metadata filtering draws the categorical boundary; full-text exclusion removes the lexical decoys. Lesson: **don't blindly trust top-k** — validate with filters.
+
+#### HNSW — How Vector Search Stays Fast
+
+**ELI5:** Comparing a query vector against millions of stored vectors is a brute-force scan ($O(N)$ time complexity) — fine for a tiny demo, but impossibly slow for production datasets. HNSW speeds this up to logarithmic time ($O(\log N)$) by creating a **multi-layer highway system** through vector space.
+
+Think of navigating a country to find an address:
+
+1. **Top Layer (Expressways):** Fly between major hubs across long distances.
+2. **Middle Layer (Highways):** Drive along main highways between cities.
+3. **Layer 0 (Local Streets):** Navigate local streets right to the destination door.
+
+![HNSW graph visualization](/blog/hnsw-layers.webp)
+
+#### Core Mechanics & Building Blocks
+
+*Theory note: the highway analogy above is all you need to *use* HNSW — the rest of this section is the how-it-works detail.*
+
+HNSW combines two foundational data structures:
+
+- **Skip Lists:** Multi-level linked structures where higher levels contain sparse subsets of the level below, enabling fast long-range jumps.
+- **Navigable Small World (NSW) Graphs:** Spatial graphs where nodes link to both close neighbors and a few long-range connections, enabling short-path routing.
+
+**How layers are assigned:**
+
+When a vector is inserted, it gets assigned a random maximum layer based on an exponentially decaying probability distribution. Roughly $\frac{1}{2^L}$ of nodes reach Layer $L$, ensuring higher layers naturally stay sparse.
+
+#### Query Traversal Step-by-Step
+
+```text
+1. ENTRY
+   Start at the designated entry point in the highest (sparsest) layer.
+
+2. GREEDY STEP
+   Check all directly connected neighbor nodes in the current layer.
+   Move to the neighbor closest to the query vector.
+
+3. LAYER DROP
+   When no neighbor is closer than the current node (a local minimum),
+   drop down one layer at the exact same node position.
+
+4. FINE SEARCH (Layer 0)
+   Repeat steps 2 & 3 down to Layer 0. Once on Layer 0, perform a
+   bounded local search to return the top-K nearest neighbors.
+```
+
+```python
+collection = client.create_collection(
+    name="my_collection",
+    configuration={
+        "hnsw": {
+            "space": "cosine",           # Distance metric: 'l2', 'ip', or 'cosine'
+            "ef_search": 100,            # Query candidate list size (recall vs. query speed)
+            "ef_construction": 100,      # Build candidate list size (build time/RAM vs. index quality)
+            "max_neighbors": 16          # Max node connections (graph density vs. memory usage)
+        }
+    }
+)
+```
+
+#### HNSW Parameters — The Main Knobs
+
+Think of HNSW like building and using a road network.
+
+| Parameter | Chroma name | When? | Simple meaning | Trade-off |
+| :--- | :--- | :--- | :--- | :--- |
+| `M` | `max_neighbors` | Build | How many connections each vector can have | Higher = better search, but more RAM |
+| `efConstruction` | `ef_construction` | Build | How hard HNSW searches for good connections while building the index | Higher = better graph, but slower indexing |
+| `efSearch` | `ef_search` | Query | How many possible neighbors HNSW checks when searching | Higher = better accuracy, but slower queries |
+| `ml` | Fixed | Build | Controls how many vectors reach the higher layers | You normally don't change this |
+
+#### ELI5
+
+Imagine you're building a road network:
+
+- **`M`** → How many roads can connect to each location?
+- **`ef_construction`** → How carefully do you choose those roads when building?
+- **`ef_search`** → How many possible roads do you explore when looking for a destination?
+- **`ml`** → How many locations get access to the expressway?
+
+#### The Most Important One
+
+For normal vector search, **`ef_search` is the main performance knob**.
+
+```text
+Lower ef_search
+    ↓
+Check fewer candidates
+    ↓
+Faster search
+    ↓
+But potentially less accurate
+
+Higher ef_search
+    ↓
+Check more candidates
+    ↓
+Slower search
+    ↓
+But potentially more accurate
+```
+
+So:
+
+`ef_search` = How hard should HNSW search before giving up?
+
+#### Limitations
+
+HNSW is an approximate nearest-neighbor search algorithm.
+
+That means:
+
+- It is very fast, but it does not guarantee finding the mathematically exact nearest vector.
+- It uses more RAM because it stores the vector graph and its connections.
+- If vectors are frequently added or deleted, the graph can become less optimal over time.
+- For heavy, constantly changing datasets, periodic index maintenance/rebuilding may be useful, depending on the vector database implementation.
+
+```text
+                 BUILDING THE INDEX
+                         │
+              ┌──────────┴──────────┐
+              │                     │
+          M / max_neighbors   ef_construction
+              │                     │
+        "How many roads?"    "How carefully
+                              choose them?"
+              │                     │
+              └──────────┬──────────┘
+                         ↓
+                   HNSW GRAPH
+                         │
+                         │
+                      SEARCH
+                         │
+                         ↓
+                    ef_search
+                         │
+                  "How many
+                   candidates
+                   should I check?"
+                         │
+                         ↓
+                  Top-K results
+```
+
+---
+
+#### CRUD Cheat Sheet
+
+This is the basic workflow for working with a ChromaDB collection:
+
+**Create → Read → Update → Delete → Search**
+
+```python
+import chromadb
+import chromadb.utils.embedding_functions as embedding_functions
+
+# ============================================================
+# 1. CREATE — Set up ChromaDB + embedding function
+# ============================================================
+
+client = chromadb.Client()
+
+ef = embedding_functions.SentenceTransformerEmbeddingFunction(
+    model_name="all-MiniLM-L6-v2"
+)
+
+collection = client.create_collection(
+    name="kb_store",
+    metadata={"description": "RAG Knowledge Base"},
+    configuration={
+        "embedding_function": ef,
+        "hnsw": {
+            "space": "cosine"
+        }
+    },
+)
+
+# ============================================================
+# 2. GET — Connect to an existing collection
+# ============================================================
+
+existing = client.get_collection(name="kb_store")
+
+# Rename / modify the collection
+collection.modify(
+    name="renamed_kb_store",
+    metadata={"status": "active"}
+)
+
+# ============================================================
+# 3. ADD — Insert documents
+# ============================================================
+
+# IDs are required.
+# Metadata is optional, but useful for filtering.
+
+collection.add(
+    ids=[
+        "doc_01",
+        "doc_02",
+        "doc_03"
+    ],
+
+    documents=[
+        "LangChain enables modular chain composition.",
+        "LlamaIndex specializes in data indexing for LLMs.",
+        "Polars is an ultra-fast DataFrame library built in Rust.",
+    ],
+
+    metadatas=[
+        {"framework": "langchain"},
+        {"framework": "llamaindex"},
+        {"domain": "data_science"},
+    ],
+)
+
+# ============================================================
+# 4. GET — Read documents
+# ============================================================
+
+# Get the document
+doc_by_id = collection.get(
+    ids=["doc_01"]
+)
+
+# Get the document + its vector embedding
+doc_with_vectors = collection.get(
+    ids=["doc_01"],
+    include=["embeddings"]
+)
+
+# ============================================================
+# 5. UPDATE — Change an existing document
+# ============================================================
+
+collection.update(
+    ids=["doc_01"],
+
+    documents=[
+        "LangChain enables declarative and cyclic agent design."
+    ],
+
+    metadatas=[
+        {"framework": "langchain_v2"}
+    ],
+)
+
+# ============================================================
+# 6. DELETE — Remove documents
+# ============================================================
+
+# Delete by ID
+collection.delete(
+    ids=["doc_01"]
+)
+
+# Delete using metadata
+collection.delete(
+    where={"framework": "llamaindex"}
+)
+
+# ============================================================
+# 7. QUERY — Semantic search
+# ============================================================
+
+results = collection.query(
+    query_texts=["polar dataframe"],
+
+    # Return the 2 closest results
+    n_results=2,
+
+    # Filter using metadata
+    where={
+        "$and": [
+            {"domain": {"$eq": "data_science"}}
+        ]
+    },
+
+    # Filter using the document's actual text
+    where_document={
+        "$contains": "DataFrame"
+    },
+)
+
+# Print the results
+for rank, (doc_id, dist, doc) in enumerate(
+    zip(
+        results["ids"][0],
+        results["distances"][0],
+        results["documents"][0],
+    ),
+    start=1,
+):
+    print(
+        f"Rank {rank} | ID: {doc_id} | "
+        f"Cosine Distance: {dist:.4f}\n"
+        f"Content: {doc}\n"
+    )
+```
+
+#### What each operation does
+
+| Operation | ChromaDB method | Simple meaning |
+| :--- | :--- | :--- |
+| **Create** | `create_collection()` | Create the collection |
+| **Add** | `add()` | Store new documents |
+| **Read** | `get()` | Retrieve documents |
+| **Update** | `update()` | Change existing documents |
+| **Delete** | `delete()` | Remove documents |
+| **Search** | `query()` | Find similar documents |
+
+#### Important distinction: get() vs query()
+
+```text
+get()
+ │
+ └── "Give me this exact document."
+       ↓
+     ID-based retrieval
+
+query()
+ │
+ └── "Find documents similar to this question."
+       ↓
+     Semantic/vector search
+```
+
+---
+
+#### Top-k: How Many Results Should I Ask For?
+
+**ELI5:** `n_results` means:
+
+> **"Give me the top N most relevant results."**
+
+For example:
+
+**The Trade-off:**
+
+```text
+n_results=3
+means:
+"Find the 3 closest matches."
+
+Small k
+  ↓
+Fewer results
+  ↓
+Faster + less noise
+  ↓
+But you might miss a useful result
+
+Large k
+  ↓
+More results
+  ↓
+More information for the LLM
+  ↓
+But also more weak/noisy results
+```
+
+Think of it like searching Google:
+
+```text
+Top 1
+→ "Give me only the best result."
+
+Top 3
+→ "Give me the best few."
+
+Top 10
+→ "Give me more options."
+```
+
+#### Testing Different Values of k
+
+The lab in this chapter tests 1, 3, 5, and 10 results for the same query:
+
+```python
+for limit in [1, 3, 5, 10]:
+
+    results = perform_similarity_search(
+        collection,
+        "spicy chicken",
+        limit
+    )
+
+    scores = [
+        r["similarity_score"]
+        for r in results
+    ]
+
+    print(
+        limit,
+        max(scores),
+        sum(scores) / len(scores)
+    )
+```
+
+This lets you see how the results change as k increases.
+
+Generally:
+
+| k | What you get |
+| ---: | :--- |
+| `1` | Only the strongest match |
+| `3` | A few strong matches |
+| `5` | More context |
+| `10` | More candidates, but potentially more noise |
+
+#### How Do I Choose k?
+
+There is no universal "correct" value.
+
+A simple starting point:
+
+Need one precise answer?
+
+```text
+        ↓
+      k = 1–3
+```
+
+Need several relevant documents?
+
+```text
+        ↓
+      k = 3–5
+```
+
+Results are going into an LLM?
+
+```text
+        ↓
+      Try k = 5–10
+      then evaluate the results
+```
+
+For RAG, larger k can be useful because the LLM can ignore weaker documents.
+
+But there is a catch:
+
+The LLM can only choose from documents you actually retrieved.
+
+If the correct document is ranked #8 and you only retrieve k=3, the LLM never gets to see it.
+
+#### Distance → Similarity Score
+
+ChromaDB can return a distance value.
+
+With cosine distance:
+
+```text
+Distance = 0
+    ↓
+Identical vectors
+
+Larger distance
+    ↓
+Less similar
+```
+
+If you want a simple similarity score, you can flip the value:
+
+```python
+similarity_score = 1 - results["distances"][0][i]
+```
+
+Example:
+
+```text
+Cosine distance = 0.13
+
+1 - 0.13
+   ↓
+0.87
+
+0.87 × 100
+   ↓
+87%
+```
+
+So you could display:
+
+```text
+87% similarity
+```
+
+**Important** — Treat this as a similarity score, not necessarily a literal probability that the result is "87% correct."
+
+```text
+0.87 similarity
+≠
+87% chance that the answer is correct
+```
+
+It is simply a transformed distance value.
+
+#### Dynamic Filters
+
+So far, we have written filters directly:
+
+```python
+where={
+    "cuisine_type": "malaysian"
+}
+```
+
+But real applications usually get filter values from the user.
+
+For example:
+
+User selects:
+
+```text
+Cuisine: Malaysian
+Max calories: 600
+```
+
+Your code needs to build the filter dynamically.
+
+#### Building the Filter
+
+```python
+filters = []
+
+# Add cuisine filter if the user selected one
+if cuisine_filter:
+    filters.append({
+        "cuisine_type": cuisine_filter
+    })
+
+# Add calorie filter if the user provided one
+if max_calories:
+    filters.append({
+        "calories": {
+            "$lte": max_calories
+        }
+    })
+
+# Build the final filter
+where_clause = (
+    filters[0]
+    if len(filters) == 1
+    else {"$and": filters}
+    if filters
+    else None
+)
+
+# Run the search
+results = collection.query(
+    query_texts=[query],
+    n_results=n_results,
+    where=where_clause,
+)
+```
+
+#### What Is Happening?
+
+The logic is simply:
+
+```text
+No filters
+    ↓
+where=None
+    ↓
+Pure similarity search
+
+One filter
+    ↓
+Use that filter directly
+
+Multiple filters
+    ↓
+Combine them with $and
+```
+
+For example:
+
+One filter:
+
+```python
+where = {
+    "cuisine_type": "malaysian"
+}
+```
+
+Two filters:
+
+```python
+where = {
+    "$and": [
+        {"cuisine_type": "malaysian"},
+        {"calories": {"$lte": 600}}
+    ]
+}
+```
+
+**ELI5** — Imagine a restaurant search:
+
+"Find me something similar to spicy chicken."
+
+That's semantic search.
+
+Then you add:
+
+"But it must be Malaysian."
+
+That's a filter.
+
+Then:
+
+"And less than 600 calories."
+
+That's another filter.
+
+So the final search becomes:
+
+```text
+Semantic search
+     +
+Cuisine filter
+     +
+Calorie filter
+     ↓
+Relevant results that also satisfy the rules
+```
+
+Remember it as:
+
+```text
+QUERY
+  │
+  ├── "What am I looking for?"
+  │       ↓
+  │   query_texts
+  │
+  ├── "How many do I want?"
+  │       ↓
+  │   n_results
+  │
+  └── "What rules must they satisfy?"
+          ↓
+        where
+```
+
+So:
+
+`query_texts` = what you want
+
+`n_results` = how many you want
+
+`where` = what conditions they must satisfy
+
+#### Three Ways to Use the Same Search
+
+The same vector search can be used in three different ways.
+
+The **retrieval step stays the same**. What changes is what we do with the results.
+
+| Type | What happens | Use it when |
+| :--- | :--- | :--- |
+| **Plain search** | Search → show ranked results | The user wants to see the results |
+| **Filtered search** | Search + apply metadata filters | The user has specific requirements |
+| **RAG chatbot** | Search → give results to LLM → generate answer | The user wants a conversational answer |
+
+#### ELI5
+
+Imagine you're searching a food database for:
+
+> **"spicy chicken"**
+
+#### 1. Plain Search
+
+```text
+User
+ ↓
+"spicy chicken"
+ ↓
+Vector search
+ ↓
+Top results
+ ↓
+Show the list
+
+The user gets something like:
+
+1. Spicy Malaysian Chicken
+2. Thai Chili Chicken
+3. Korean Spicy Chicken
+```
+
+#### 2. Filtered Search
+
+Now the user says:
+
+"Find spicy chicken, but under 500 calories."
+
+```text
+User
+ ↓
+"spicy chicken"
+ ↓
+Vector search
+ ↓
+Apply filters
+ ↓
+Top matching results
+```
+
+The vector search finds things that are similar, while the filter enforces rules.
+
+Similarity: "Does this look like spicy chicken?"
+
+Filter: "Does it meet the calorie requirement?"
+
+#### 3. RAG Chatbot
+
+Now the user asks:
+
+"I'm looking for something spicy and healthy. What should I eat?"
+
+The system can turn the search results into a natural-language answer:
+
+```text
+User
+ ↓
+Question
+ ↓
+Vector search
+ ↓
+Retrieve relevant food
+ ↓
+Put results into LLM context
+ ↓
+LLM writes answer
+ ↓
+Conversational response
+```
+
+For example:
+
+"I'd recommend Spicy Malaysian Chicken because it matches your preference for spicy food while staying within your calorie target."
+
+**The Important Idea** — These are not three completely different retrieval systems.
+
+They can all use:
+
+```python
+collection.query(...)
+```
+
+The difference is what happens after retrieval.
+
+```text
+                  Vector Search
+                       │
+             ┌─────────┼─────────┐
+             │         │         │
+             ▼         ▼         ▼
+          Plain     Filtered     RAG
+          Search     Search     Chatbot
+             │         │         │
+             ▼         ▼         ▼
+           List      List       LLM answer
+```
+
+#### The RAG Loop in Code
+
+A basic RAG pipeline looks like this:
+
+```text
+1. User asks a question
+        ↓
+2. Search the vector database
+        ↓
+3. Retrieve the most relevant documents
+        ↓
+4. Put those documents into the LLM prompt
+        ↓
+5. LLM generates the answer
+```
+
+The lab retrieves the top 3 results and gives them to the LLM.
+
+#### Step 1 — Prepare the Retrieved Context
+
+First, turn the search results into readable text for the LLM:
+
+```python
+def prepare_context_for_llm(query: str, search_results) -> str:
+
+    parts = [
+        "Based on your query, here are the most relevant food options:",
+        ""
+    ]
+
+    for i, result in enumerate(search_results[:3], 1):
+
+        parts.append(
+            f"Option {i}: {result['food_name']}"
+        )
+
+        parts.append(
+            f"  - Description: {result['food_description']}"
+        )
+
+        parts.append(
+            f"  - Cuisine: {result['cuisine_type']}"
+        )
+
+        parts.append(
+            f"  - Calories: "
+            f"{result['food_calories_per_serving']} per serving"
+        )
+
+        parts.append(
+            f"  - Similarity score: "
+            f"{result['similarity_score'] * 100:.1f}%"
+        )
+
+        parts.append("")
+
+    return "\n".join(parts)
+```
+
+The result becomes something like:
+
+```text
+Based on your query, here are the most relevant food options:
+
+Option 1: Spicy Malaysian Chicken
+  - Description: Grilled chicken with spicy sambal
+  - Cuisine: Malaysian
+  - Calories: 450 per serving
+  - Similarity score: 89.2%
+
+Option 2: Thai Chili Chicken
+  - Description: Chicken with Thai chili sauce
+  - Cuisine: Thai
+  - Calories: 480 per serving
+  - Similarity score: 85.7%
+```
+
+Now the LLM has structured information to work with.
+
+#### Step 2 — Give the Context to the LLM
+
+Next, combine:
+
+User question + retrieved information + instructions
+
+```python
+prompt = f"""
+You are a helpful food recommendation assistant.
+
+A user is asking for food recommendations.
+I retrieved relevant options from a food database.
+
+User Query:
+"{query}"
+
+Retrieved Food Information:
+
+{context}
+
+Please provide a helpful, short response that:
+
+1. Recommends 2-3 specific food items
+2. Explains why they match the user's request
+3. Uses a friendly, conversational tone
+
+Response:
+"""
+
+generated_response = model.generate(
+    prompt=prompt
+)
+
+response_text = (
+    generated_response["results"][0]["generated_text"]
+    .strip()
+)
+```
+
+**The Key Idea** — The LLM is not searching the database itself.
+
+Your application does the search first:
+
+```text
+Database
+    ↓
+Find relevant documents
+    ↓
+Put documents into prompt
+    ↓
+LLM reads them
+    ↓
+LLM writes the answer
+```
+
+That's the basic idea behind Retrieval-Augmented Generation (RAG).
+
+**The LLM Is Replaceable** — The LLM doesn't have to be IBM Granite/Qwen/Deepseek.
+
+You could use another provider/model instead.
+
+For example:
+
+```python
+model.generate(...)
+```
+
+could be replaced with an OpenRouter/LangChain call such as:
+
+```python
+llm.invoke(...)
+```
+
+The overall architecture stays the same:
+
+```text
+Vector DB
+    ↓
+Retrieve
+    ↓
+Context
+    ↓
+LLM
+    ↓
+Answer
+```
+
+The retrieval layer and generation layer are separate.
+
+#### Step 3 — Always Have a Fallback
+
+This is an important real-world lesson.
+
+What happens if the LLM:
+
+- times out?
+- returns an error?
+- API is unavailable?
+- produces an empty response?
+- returns something too short?
+
+Don't let the entire chatbot fail.
+
+You can answer directly from the retrieved results:
+
+```python
+def generate_fallback_response(query: str, search_results) -> str:
+
+    if not search_results:
+        return (
+            "I couldn't find any food items "
+            "matching your request."
+        )
+
+    top = search_results[0]
+
+    return (
+        f"Based on your request for '{query}', "
+        f"I'd recommend {top['food_name']} — "
+        f"a {top['cuisine_type']} dish with "
+        f"{top['food_calories_per_serving']} "
+        f"calories per serving."
+    )
+```
+
+#### Simple visualization
+
+```text
+                  Search
+                    │
+                    ▼
+              Retrieved data
+                    │
+             ┌──────┴──────┐
+             │             │
+          LLM works     LLM fails
+             │             │
+             ▼             ▼
+        Nice answer    Fallback answer
+```
+
+The retrieval results are valuable even without the LLM.
+
+The LLM is the writer, not the database.
+
+#### Conversation History
+
+The chatbot also needs to remember previous messages.
+
+But conversation history uses tokens.
+
+```text
+More history
+     ↓
+More tokens
+     ↓
+More context
+     ↓
+Higher cost + larger prompt
+```
+
+That's why the lab keeps only the most recent few turns.
+
+A simple strategy is:
+
+```text
+Turn 1  ──┐
+Turn 2    │
+Turn 3    │  Keep recent turns
+Turn 4    │
+Turn 5  ──┘
+
+Older turns
+   ↓
+Remove / summarize
+```
+
+This is the same context-window trade-off discussed earlier.
+
+#### Why Use a Dedicated Vector Database?
+
+You can build vector search yourself, but a vector database handles many of the annoying parts for you.
+
+1. Consistency
+
+The same embedding model should be used for:
+
+```text
+Documents
+    ↓
+Embedding model
+    ↓
+Vectors
+```
+
+```text
+Queries
+    ↓
+Same embedding model
+    ↓
+Vectors
+```
+
+If you use different embedding models, their vectors may not be directly comparable.
+
+Best practice: configure the embedding function at the collection level and use it consistently.
+
+2. Simplicity
+
+The database keeps the:
+
+```text
+Document
+    +
+Metadata
+    +
+Embedding
+```
+
+together.
+
+You don't have to build your own system to keep these pieces synchronized.
+
+3. Performance
+
+A vector database can use an Approximate Nearest Neighbor (ANN) index such as HNSW.
+
+Instead of:
+
+```text
+Query
+  ↓
+Compare against every vector
+  ↓
+1,000,000 comparisons
+```
+
+HNSW can search through its graph to find good candidates much faster.
+
+```text
+Query
+  ↓
+HNSW graph
+  ↓
+Relevant candidates
+  ↓
+Top-K results
+```
+
+#### Pitfalls to Remember
+
+These are the mistakes worth remembering when building a RAG system.
+
+#### 1. Embedding Model Mismatch
+
+Don't do this:
+
+```text
+Documents → Model A → vectors
+
+Query → Model B → vector
+```
+
+The vectors may not be meaningfully comparable.
+
+Instead:
+
+```text
+Documents ──┐
+            ├── Same embedding model
+Query ──────┘
+```
+
+#### 2. Bad Chunk Size
+
+When splitting documents:
+
+```text
+Chunk too large
+    ↓
+Too many topics in one vector
+    ↓
+Meaning becomes diluted
+```
+
+But:
+
+```text
+Chunk too small
+    ↓
+Not enough context
+    ↓
+Meaning becomes incomplete
+```
+
+You want chunks that are small enough to be focused but large enough to preserve meaning.
+
+#### 3. Changing Collection Settings
+
+Some important settings are tied to how the collection was created.
+
+For example, changing:
+
+- embedding model
+- distance metric / space
+
+may require creating a new collection and re-indexing the documents, rather than changing the existing collection in place.
+
+Think:
+
+```text
+Old collection
+      ↓
+Create new configuration
+      ↓
+Re-embed documents
+      ↓
+Build new index
+```
+
+#### 4. Blindly Trusting Top-k
+
+Just because something appears in the top results doesn't mean it is actually useful.
+
+For example:
+
+Query: "spicy chicken"
+
+Results:
+
+```text
+1. Spicy chicken        ← Good
+2. Chicken curry       ← Probably useful
+3. Chili chicken       ← Good
+4. Chicken soup         ← Maybe
+5. Chicken sandwich     ← Weak
+```
+
+The vector search is finding similarity, not necessarily correctness.
+
+Depending on the application, combine semantic search with:
+
+- metadata filters
+- keyword/full-text search
+- similarity thresholds
+- reranking
+- evaluation tests
+
+#### Visualizing how it works
+
+```text
+                USER QUESTION
+                      │
+                      ▼
+              ┌───────────────┐
+              │ Vector Search │
+              └───────┬───────┘
+                      │
+                 Top-K results
+                      │
+             ┌────────┴────────┐
+             │                 │
+          Filter            Rerank
+             │                 │
+             └────────┬────────┘
+                      │
+                      ▼
+                 RAG Context
+                      │
+                      ▼
+                     LLM
+                      │
+                      ▼
+                  Final Answer
+```
+
+Search finds the information. Filters enforce rules. Reranking improves ordering. The LLM turns the retrieved information into a useful response.
+
+---
+
+## Chapter 4 — Advanced Retrievers
+
+### Beyond Plain Top-k Search
+
+So far, our retriever has been simple:
+
+```text
+User query
+    ↓
+Create query embedding
+    ↓
+Find closest vectors
+    ↓
+Return top-k results
+```
+
+This works well, but it has limitations.
+
+Advanced retrievers improve search in different ways:
+
+```text
+Vector Search
+    │
+    ├── Semantic search
+    │      "Find things with similar meaning"
+    │
+    ├── BM25
+    │      "Find exact words / keywords"
+    │
+    ├── MMR
+    │      "Avoid returning repetitive results"
+    │
+    ├── Auto-Merging
+    │      "Return the larger section around a matching chunk"
+    │
+    ├── Recursive Retrieval
+    │      "Follow references to other documents"
+    │
+    └── Query Fusion
+           "Search using multiple versions of the question"
+```
+
+Think of it like upgrading a librarian.
+
+A basic librarian only looks for books that are semantically similar to your question.
+
+An advanced librarian can also:
+
+- Search for exact keywords
+- Avoid giving you five nearly identical books
+- Return the entire section around a matching paragraph
+- Follow references to other documents
+- Ask several versions of your question and combine the results
+
+### The Main Index Types
+
+Retrievers work on top of an index.
+
+LlamaIndex provides several types of indexes.
+
+| Index | What it stores | How it searches |
+| :--- | :--- | :--- |
+| VectorStoreIndex | Embeddings for chunks | Meaning / semantic similarity |
+| KeywordTableIndex | Keywords associated with chunks | Exact keyword matching |
+| DocumentSummaryIndex | LLM-generated summaries | Match against summaries, then return original documents |
+
+Simple visualization:
+
+```text
+VectorStoreIndex
+    ↓
+"Does this mean something similar?"
+
+KeywordTableIndex
+    ↓
+"Does this contain this keyword?"
+
+DocumentSummaryIndex
+    ↓
+"Does this document's summary look relevant?"
+    ↓
+Return the original document
+```
+
+The interesting one is DocumentSummaryIndex.
+
+Instead of searching huge documents directly:
+
+```text
+Huge document
+     ↓
+Generate summary
+     ↓
+Search the summary
+     ↓
+If relevant → return original document
+```
+
+So:
+
+The summary helps us find the document. The original document provides the actual information.
+
+### 1. Vector Index Retriever
+
+This is the basic semantic search we've already been using.
+
+```python
+vector_retriever = VectorIndexRetriever(
+    index=vector_index,
+    similarity_top_k=3
+)
+```
+
+It is equivalent to:
+
+```python
+vector_retriever = vector_index.as_retriever(
+    similarity_top_k=3
+)
+```
+
+#### ELI5
+
+If the user searches:
+
+"How can I make my application faster?"
+
+Vector search can find documents containing:
+
+```text
+improve performance
+optimize response time
+reduce latency
+speed up the application
+```
+
+Even though the exact words are different.
+
+#### Good for
+
+Natural-language questions, semantic search, synonyms, general RAG.
+
+#### Weakness
+
+It can miss something where the exact word matters.
+
+For example:
+
+```text
+Query:
+"DP-600"
+
+Document:
+"DP-600 Microsoft Fabric Analytics Engineer"
+```
+
+Exact keyword matching can be very useful here.
+
+That's where BM25 comes in.
+
+### 2. BM25 Retriever
+
+#### ELI5
+
+BM25 is basically a smart keyword search algorithm.
+
+Instead of asking:
+
+"Does this document mean something similar?"
+
+it asks:
+
+"Does this document contain important words from my query?"
+
+For example:
+
+```text
+Query:
+"Microsoft Fabric DP-600"
+
+Document A:
+"Microsoft Fabric DP-600 certification guide"
+
+Document B:
+"General data engineering concepts"
+```
+
+BM25 will strongly favor Document A because it contains the important terms.
+
+#### BM25 vs TF-IDF
+
+BM25 evolved from the older TF-IDF approach.
+
+The basic TF-IDF idea is:
+
+A word is important when it appears frequently in this document but not frequently across the whole collection.
+
+BM25 improves this in two important ways.
+
+**1. Term Frequency Saturation**
+
+Suppose the word Python appears in a document.
+
+```text
+1 occurrence
+    ↓
+Useful signal
+
+5 occurrences
+    ↓
+Stronger signal
+
+100 occurrences
+    ↓
+Not 100× more useful
+```
+
+BM25 prevents repeated words from increasing the score indefinitely.
+
+The k1 parameter controls this behavior.
+
+A common value is around: `k1 ≈ 1.2`.
+
+**2. Document Length Normalization**
+
+A long document naturally contains more words.
+
+Without normalization:
+
+```text
+Long document
+    ↓
+Contains more keywords
+    ↓
+Could unfairly get a higher score
+```
+
+BM25 adjusts for document length.
+
+The b parameter controls how strongly this happens.
+
+A common value is: `b ≈ 0.75`.
+
+#### Example
+
+```python
+bm25_retriever = BM25Retriever.from_defaults(
+    nodes=nodes,
+    similarity_top_k=3,
+    stemmer=Stemmer.Stemmer("english"),
+    language="english",
+)
+```
+
+#### Good for
+
+- Technical documentation
+- Legal documents
+- Product catalogs
+- Names and IDs
+- Error messages
+- Exact terminology
+
+#### Weakness
+
+BM25 does not understand meaning.
+
+For example:
+
+```text
+Query:
+"cheap car"
+
+Document:
+"affordable vehicle"
+```
+
+A vector search may understand the relationship.
+
+BM25 may not.
+
+The important idea:
+
+BM25 and vector search are complementary.
+
+```text
+Vector Search
+    ↓
+Understands meaning
+
+BM25
+    ↓
+Understands exact words
+```
+
+Using both together is often more useful than treating them as competitors.
+
+### 3. Document Summary Retriever
+
+A DocumentSummaryIndex creates a summary for each document.
+
+Instead of searching every full document directly:
+
+```text
+Documents
+    ↓
+Generate summaries
+    ↓
+Search summaries
+    ↓
+Find relevant documents
+    ↓
+Return original documents
+```
+
+#### Why do this?
+
+Imagine you have:
+
+10,000 large documents
+
+You don't necessarily want to put all of those full documents into the retrieval process.
+
+Instead:
+
+```text
+Large documents
+      ↓
+Small summaries
+      ↓
+Search summaries
+      ↓
+Select relevant documents
+      ↓
+Retrieve originals
+```
+
+#### Two retrieval approaches
+
+**DocumentSummaryIndexLLMRetriever**
+
+An LLM evaluates which summaries are relevant.
+
+```text
+Query
+  ↓
+LLM examines summaries
+  ↓
+Choose relevant documents
+  ↓
+Return originals
+```
+
+Pros:
+
+- Can understand nuanced queries
+
+Cons:
+
+- Slower
+- More expensive
+
+**DocumentSummaryIndexEmbeddingRetriever**
+
+Use embeddings instead:
+
+```text
+Query
+  ↓
+Embedding
+  ↓
+Compare with summary embeddings
+  ↓
+Return relevant documents
+```
+
+Pros:
+
+- Faster
+- Cheaper
+
+Cons:
+
+- Depends on embedding quality
+
+#### Most important point
+
+Both approaches return the original documents, not just the summaries.
+
+```text
+Summary
+   ↓
+Used for SEARCH
+
+Original document
+   ↓
+Used for ANSWERING
+```
+
+### 4. Auto-Merging Retriever
+
+This solves a common chunking problem.
+
+Remember:
+
+```text
+Small chunks
+    ↓
+Precise embeddings
+    ↓
+But less context
+```
+
+```text
+Large chunks
+    ↓
+More context
+    ↓
+But less precise embeddings
+```
+
+Auto-merging tries to get the benefits of both.
+
+#### ELI5
+
+Imagine a document:
+
+```text
+Chapter
+│
+├── Section A
+│   ├── Paragraph 1
+│   ├── Paragraph 2
+│   └── Paragraph 3
+│
+└── Section B
+    ├── Paragraph 4
+    ├── Paragraph 5
+    └── Paragraph 6
+```
+
+We create embeddings for the small paragraphs.
+
+If the search finds several paragraphs belonging to the same section, the retriever can say:
+
+"These chunks are clearly related. Give the LLM the larger parent section instead."
+
+```text
+Search small chunks
+        ↓
+Several siblings match
+        ↓
+Find their parent
+        ↓
+Return larger context
+```
+
+#### Example
+
+```python
+node_parser = HierarchicalNodeParser.from_defaults(
+    chunk_sizes=[512, 256, 128]
+)
+
+hier_nodes = node_parser.get_nodes_from_documents(
+    documents
+)
+
+docstore = SimpleDocumentStore()
+
+docstore.add_documents(hier_nodes)
+
+storage_context = StorageContext.from_defaults(
+    docstore=docstore
+)
+
+base_index = VectorStoreIndex(
+    hier_nodes,
+    storage_context=storage_context
+)
+
+base_retriever = base_index.as_retriever(
+    similarity_top_k=6
+)
+
+auto_merging_retriever = AutoMergingRetriever(
+    base_retriever,
+    storage_context,
+    verbose=True
+)
+```
+
+#### Good for
+
+Legal contracts, research papers, technical specifications, large structured documents.
+
+Especially when:
+
+A matching paragraph makes the surrounding section important too.
+
+### 5. Recursive Retriever
+
+Some information points to other information.
+
+For example:
+
+```text
+Research paper
+    ↓
+Citation
+    ↓
+Another paper
+    ↓
+Another document
+```
+
+A recursive retriever can follow those references.
+
+#### ELI5
+
+Imagine you're reading:
+
+"This method is explained in Document B."
+
+Instead of stopping, the retriever follows the reference:
+
+```text
+Document A
+    ↓
+"See Document B"
+    ↓
+Retrieve Document B
+    ↓
+"See Document C"
+    ↓
+Retrieve Document C
+```
+
+#### Example
+
+```python
+retriever_dict = {
+    f"doc_{i}": ref_index.as_retriever(
+        similarity_top_k=1
+    )
+    for i in range(len(docs_with_refs))
+}
+
+retriever_dict["vector"] = base_retriever
+
+recursive_retriever = RecursiveRetriever(
+    "vector",
+    retriever_dict=retriever_dict,
+    query_engine_dict={},
+    verbose=True,
+)
+```
+
+#### Good for
+
+- Research papers
+- Documents with citations
+- Knowledge bases with cross-references
+- Documentation with linked sections
+
+#### Weakness
+
+You need to deliberately build the reference relationships.
+
+And if the chain becomes:
+
+```text
+A → B → C → D → E → F
+```
+
+retrieval can become:
+
+- Expensive
+- Slow
+- Difficult to debug
+
+### 6. Query Fusion Retriever
+
+This solves another problem:
+
+The wording of your query can change what the retriever finds.
+
+For example:
+
+Original:
+
+"How do I reduce database latency?"
+
+The system could generate variations:
+
+1. How can I reduce database latency?
+2. How can I make database queries faster?
+3. How do I improve database performance?
+4. How can I optimize database response time?
+
+Then it searches using all of them.
+
+```text
+             Original Query
+                   │
+          ┌────────┼────────┐
+          ↓        ↓        ↓
+       Query 1  Query 2  Query 3
+          │        │        │
+          ↓        ↓        ↓
+       Search    Search    Search
+          │        │        │
+          └────────┼────────┘
+                   ↓
+             Merge results
+                   ↓
+             Final ranking
+```
+
+This is called Query Fusion.
+
+Why does this help?
+
+Different wording can retrieve different documents.
+
+```text
+Query A
+    ↓
+Documents: 1, 2, 3
+
+Query B
+    ↓
+Documents: 2, 4, 5
+
+Query C
+    ↓
+Documents: 1, 2, 6
+```
+
+Document 2 appeared in all three searches.
+
+That's a useful signal.
+
+### Fusion Method 1 — Reciprocal Rank Fusion (RRF)
+
+RRF mostly cares about where a document ranked, rather than the raw similarity score.
+
+The formula is:
+
+$$
+RRF(d) = \sum_i \frac{1}{rank_i(d) + k}
+$$
+
+Usually: `k ≈ 60`.
+
+#### ELI5
+
+Imagine three judges ranking documents.
+
+```text
+Judge 1:
+A → #1
+B → #2
+C → #3
+
+Judge 2:
+B → #1
+A → #2
+D → #3
+
+Judge 3:
+A → #1
+B → #2
+D → #3
+```
+
+A document that consistently appears near the top gets a higher combined score.
+
+```text
+A → appears near the top several times
+B → appears near the top several times
+C → appears once
+D → appears twice
+```
+
+RRF rewards consistent ranking across multiple searches.
+
+#### Example
+
+```python
+fusion_retriever = QueryFusionRetriever(
+    [base_retriever],
+    similarity_top_k=3,
+    num_queries=3,
+    mode="reciprocal_rerank",
+    use_async=False,
+)
+```
+
+#### Why RRF is popular
+
+Different retrievers may produce completely different score ranges.
+
+For example:
+
+```text
+Retriever A:
+0.91
+0.87
+0.82
+
+Retriever B:
+12.4
+11.2
+9.8
+```
+
+Comparing those raw scores directly is difficult.
+
+RRF avoids that problem by mainly using rank.
+
+### Fusion Method 2 — Relative Score Fusion
+
+Instead of only looking at rank, this method keeps information about the relative score.
+
+Each result list is normalized:
+
+```text
+score / maximum score
+
+So the scores become roughly:
+
+0 → weak
+
+1 → strongest result
+```
+
+Then the scores from the different query variations are combined.
+
+#### Simple idea
+
+```text
+RRF
+    ↓
+"What position did you get?"
+
+Relative Score
+    ↓
+"How strong was your score?"
+```
+
+#### Advantage
+
+More information about the retriever's confidence is preserved.
+
+#### Disadvantage
+
+It assumes the underlying scores are meaningful enough to compare after normalization.
+
+### Fusion Method 3 — Distribution-Based Fusion
+
+This method goes further and looks at the distribution of scores.
+
+It roughly works like:
+
+```text
+Raw scores
+    ↓
+Calculate mean + standard deviation
+    ↓
+Convert to z-scores
+    ↓
+Normalize
+    ↓
+Combine results
+```
+
+The z-score is:
+
+$$
+z = \frac{x-\mu}{\sigma}
+$$
+
+Then the score can be passed through a sigmoid:
+
+$$
+\sigma(z) = \frac{1}{1+e^{-z}}
+$$
+
+The goal is to make different score distributions more comparable.
+
+#### Simple comparison
+
+| Method | Main idea | Strength |
+| :--- | :--- | :--- |
+| RRF | Look at rank | Simple and robust |
+| Relative Score | Look at normalized scores | Keeps more score information |
+| Distribution-Based | Normalize the score distribution | Handles unusual score distributions |
+
+#### The big picture
+
+You don't need to memorize every implementation detail.
+
+Remember what each retriever is trying to fix:
+
+| Retriever | Main problem it solves |
+| :--- | :--- |
+| Vector Search | Finds similar meaning |
+| BM25 | Finds exact keywords |
+| Document Summary | Searches large documents through summaries |
+| Auto-Merging | Recovers larger context from small chunks |
+| Recursive | Follows references to other information |
+| Query Fusion | Searches multiple versions of the same question |
+
+#### One Big Picture
+
+```text
+                    ADVANCED RETRIEVAL
+                           │
+       ┌───────────────────┼────────────────────┐
+       │                   │                    │
+       ▼                   ▼                    ▼
+   Better matching     Better context      Better coverage
+       │                   │                    │
+       ├── BM25            ├── Auto-Merge       ├── Query Fusion
+       │                   │                    │
+       ├── Vector          ├── Summary          └── Recursive
+       │
+       └── Hybrid
+```
+
+The important shift from basic RAG is:
+
+Don't assume "top-k vector search" is always enough. Choose the retrieval strategy based on the type of information you're searching.
+
+### Which Retriever Should You Use?
+
+There is no single "best" retriever. The right choice depends on the type of information you're searching for.
+
+| Scenario | Recommended Retriever | Why |
+| :--- | :--- | :--- |
+| General Q&A | Vector retriever, optionally + BM25 | Semantic meaning + exact keywords |
+| Technical docs | BM25 + vector retriever | Exact terms matter |
+| Long documents | Auto-merging / ParentDocument retriever | Search small chunks, return larger context |
+| Research papers | Recursive retriever | Can follow references |
+| Large multi-topic collections | Document Summary + vector search | Narrow the search space first |
+
+#### Picture it like this
+
+Think of each retriever as a different type of librarian:
+
+```text
+Vector search → "Find things that mean something similar."
+BM25 → "Find documents containing these important words."
+Auto-merging → "Find the exact passage, then give me the surrounding section."
+Recursive → "Follow the references and find the related information."
+Query fusion → "Ask the same question several different ways."
+```
+
+### LangChain's Retriever Toolbox
+
+The same retrieval concepts exist in LangChain.
+
+A retriever is simply an interface:
+
+```text
+Query string
+     ↓
+Retriever
+     ↓
+List of Documents
+```
+
+The implementation underneath can use vector search, BM25, MMR, metadata filtering, or other strategies.
+
+### 1. Vector Store Retriever
+
+LangChain lets you turn a vector database into a retriever with different search modes.
+
+**Basic similarity search:**
+
+```python
+retriever = vectordb.as_retriever()
+```
+
+By default, this returns the top 4 results.
+
+**Limit the number of results:**
+
+```python
+retriever = vectordb.as_retriever(
+    search_kwargs={"k": 1}
+)
+```
+
+This returns only the top result.
+
+**MMR — relevance + diversity:**
+
+```python
+retriever = vectordb.as_retriever(
+    search_type="mmr"
+)
+```
+
+**Similarity threshold:**
+
+```python
+retriever = vectordb.as_retriever(
+    search_type="similarity_score_threshold",
+    search_kwargs={
+        "score_threshold": 0.4
+    }
+)
+```
+
+Only results above the configured threshold are returned.
+
+#### MMR: Maximum Marginal Relevance
+
+#### ELI5
+
+Normal top-k search might return:
+
+```text
+1. Document A — "How to optimize database queries"
+2. Document B — "Ways to make database queries faster"
+3. Document C — "Database query performance improvements"
+4. Document D — "Improving SQL query speed"
+5. Document E — "Techniques for faster database queries"
+```
+
+All five are relevant, but they are basically saying the same thing.
+
+MMR tries to reduce this redundancy.
+
+Instead of asking only:
+
+"Is this document relevant?"
+
+it also asks:
+
+"Is this document different enough from the documents I already selected?"
+
+So the results might cover:
+
+1. Query optimization
+2. Database indexing
+3. Caching
+4. Connection pooling
+5. Hardware / infrastructure
+
+#### Picture it like this
+
+Top-k:
+
+Give me the 5 most relevant documents.
+
+MMR:
+
+Give me relevant documents that also cover different aspects of the question.
+
+This is useful when coverage matters more than finding several nearly identical passages.
+
+### 2. MultiQueryRetriever
+
+#### The Problem
+
+Sometimes a query is phrased differently from the way the documents are written.
+
+For example:
+
+User:
+
+"How can I reduce database latency?"
+
+The documents might talk about:
+
+```text
+"SQL query optimization"
+"database performance"
+"response-time reduction"
+"query execution efficiency"
+```
+
+A single embedding search may not retrieve all of them equally well.
+
+#### The Solution
+
+MultiQueryRetriever asks an LLM to generate several versions of the user's question.
+
+For example:
+
+Original:
+
+How can I reduce database latency?
+
+Query 1:
+
+How can I make database queries faster?
+
+Query 2:
+
+How can I improve database performance?
+
+Query 3:
+
+How can I reduce SQL response time?
+
+Each query is searched separately.
+
+The resulting documents are then combined into a unique union.
+
+#### Code
+
+```python
+import logging
+from langchain.retrievers.multi_query import MultiQueryRetriever
+
+retriever = MultiQueryRetriever.from_llm(
+    retriever=vectordb.as_retriever(),
+    llm=llm()
+)
+
+logging.getLogger(
+    "langchain.retrievers.multi_query"
+).setLevel(logging.INFO)
+
+docs = retriever.invoke(
+    "What does the paper say about LangChain?"
+)
+```
+
+#### Useful debugging trick
+
+This logging line:
+
+```python
+logging.getLogger(
+    "langchain.retrievers.multi_query"
+).setLevel(logging.INFO)
+```
+
+lets you see the query variations generated by the LLM.
+
+That is useful because you can check whether the LLM is generating sensible search queries.
+
+#### MultiQuery vs Query Fusion
+
+They solve a similar problem:
+
+One question → multiple search queries
+
+But they combine results differently.
+
+| Approach | Main idea |
+| :--- | :--- |
+| MultiQueryRetriever | Generate multiple queries and take the unique union |
+| Query Fusion | Generate multiple queries and combine/rerank their results |
+
+So MultiQueryRetriever can be thought of as the simpler version of the broader query-fusion idea.
+
+### 3. SelfQueryRetriever
+
+#### Natural Language → Metadata Filters
+
+This retriever is useful when your documents contain structured metadata.
+
+Suppose your movie database contains:
+
+```text
+title
+year
+rating
+director
+```
+
+The user asks:
+
+"I want to watch a movie rated higher than 8.5."
+
+A normal vector search may understand the meaning, but it does not automatically know that:
+
+`rating > 8.5`
+
+is a database filter.
+
+SelfQueryRetriever converts the natural-language request into:
+
+```text
+Semantic search
+        +
+Metadata filter
+```
+
+#### ELI5
+
+The user says:
+
+"Find me highly rated movies."
+
+The retriever effectively turns that into:
+
+```text
+Search: highly rated movies
+
+Filter:
+rating > 8.5
+```
+
+#### Code
+
+```python
+from langchain.chains.query_constructor.base import AttributeInfo
+from langchain.retrievers.self_query.base import SelfQueryRetriever
+
+
+metadata_field_info = [
+    AttributeInfo(
+        name="year",
+        description="The year the movie was released",
+        type="integer",
+    ),
+    AttributeInfo(
+        name="rating",
+        description="A 1-10 rating for the movie",
+        type="float",
+    ),
+    AttributeInfo(
+        name="director",
+        description="The name of the movie director",
+        type="string",
+    ),
+]
+
+retriever = SelfQueryRetriever.from_llm(
+    llm(),
+    vectordb,
+    "Brief summary of a movie.",
+    metadata_field_info,
+)
+```
+
+Now you can ask:
+
+```python
+retriever.invoke(
+    "I want to watch a movie rated higher than 8.5"
+)
+
+retriever.invoke(
+    "Has Greta Gerwig directed any movies about women?"
+)
+```
+
+#### When to use it
+
+Use it when users naturally describe metadata constraints.
+
+Examples:
+
+- "Show me movies after 2020."
+- "Find products below RM100."
+- "Show papers written after 2023."
+- "Find restaurants with a rating above 4.5."
+
+#### Simple visualization
+
+Normal retrieval:
+
+```text
+Question
+   ↓
+Semantic search
+   ↓
+Documents
+```
+
+Self-query retrieval:
+
+```text
+Natural-language question
+          ↓
+      LLM parses it
+       ↙          ↘
+Semantic search   Metadata filter
+       ↘          ↙
+       Documents
+```
+
+This automates the same general semantic search + metadata filter pattern discussed earlier.
+
+### 4. ParentDocumentRetriever
+
+#### Small Chunks for Search, Large Chunks for Answers
+
+This solves one of the biggest RAG problems:
+
+How big should my chunks be?
+
+Small chunks:
+
+- better for precise matching
+- easier to retrieve
+- may lack enough context
+
+Large chunks:
+
+- contain more context
+- harder to match precisely
+- may contain unnecessary information
+
+ParentDocumentRetriever uses both.
+
+#### The big picture
+
+```text
+Large Parent Document
+┌─────────────────────────────┐
+│                             │
+│      1000-character         │
+│          parent             │
+│                             │
+│  ┌────┐ ┌────┐ ┌────┐       │
+│  │200 │ │200 │ │200 │ ...   │
+│  └────┘ └────┘ └────┘       │
+│       Small children        │
+└─────────────────────────────┘
+```
+
+The small child chunks are searched.
+
+When one matches, the larger parent is returned.
+
+#### Code
+
+```python
+from langchain.retrievers import ParentDocumentRetriever
+from langchain.storage import InMemoryStore
+
+parent_splitter = CharacterTextSplitter(
+    chunk_size=1000,
+    chunk_overlap=20
+)
+
+child_splitter = CharacterTextSplitter(
+    chunk_size=200,
+    chunk_overlap=20
+)
+
+retriever = ParentDocumentRetriever(
+    vectorstore=vectordb,
+    docstore=InMemoryStore(),
+    child_splitter=child_splitter,
+    parent_splitter=parent_splitter,
+)
+```
+
+What happens?
+
+```text
+User query
+    ↓
+Search 200-character children
+    ↓
+Find matching child
+    ↓
+Retrieve its 1000-character parent
+    ↓
+Return larger context
+```
+
+This is conceptually similar to LlamaIndex's Auto-Merging Retriever, although the implementation is different.
+
+### Putting It Together: Retriever Exercises
+
+The practical exercises combine the retrieval techniques above into actual RAG systems.
+
+### Exercise 1 — Hybrid Retriever
+
+#### Vector Search + BM25
+
+#### ELI5
+
+Imagine two librarians searching for a book.
+
+Librarian A — Vector Search:
+
+"This book has a similar meaning."
+
+Librarian B — BM25:
+
+"This book contains the important words."
+
+Instead of trusting only one librarian, combine their opinions.
+
+For example:
+
+```text
+Vector score = 70%
+BM25 score   = 30%
+```
+
+A document that performs well in both systems gets a higher final score.
+
+#### Core implementation
+
+```python
+vector_results = vector_retriever.retrieve(query)
+bm25_results = bm25_retriever.retrieve(query)
+
+
+vector_scores = {
+    r.text.strip():
+        r.score / max(x.score for x in vector_results)
+    for r in vector_results
+}
+
+bm25_scores = {
+    r.text.strip():
+        r.score / max(x.score for x in bm25_results)
+    for r in bm25_results
+}
+
+all_keys = set(vector_scores) | set(bm25_scores)
+
+hybrid = [
+    (
+        key,
+        0.7 * vector_scores.get(key, 0)
+        + 0.3 * bm25_scores.get(key, 0)
+    )
+    for key in all_keys
+]
+
+hybrid.sort(
+    key=lambda x: x[1],
+    reverse=True
+)
+```
+
+#### Why normalize the scores?
+
+Vector and BM25 scores are not naturally on the same scale.
+
+For example:
+
+```text
+Vector score:
+0.82
+
+BM25 score:
+14.7
+```
+
+Comparing these raw numbers directly would not make sense.
+
+So each retriever's scores are normalized relative to its own maximum.
+
+Conceptually:
+
+```text
+normalized score = score / maximum score
+```
+
+Then:
+
+```text
+Final score
+    =
+    0.7 × vector score
+    +
+    0.3 × BM25 score
+```
+
+#### Important implementation detail
+
+If two retrievers contain the same text, their internal node IDs may still differ.
+
+Therefore, this example uses:
+
+```python
+r.text.strip()
+```
+
+as the dictionary key rather than:
+
+```python
+r.node_id
+```
+
+That lets the two result sets line up by content.
+
+```text
+                 Query
+                   │
+          ┌────────┴────────┐
+          ▼                 ▼
+
+     Vector Search       BM25 Search
+          │                 │
+          ▼                 ▼
+     Normalize           Normalize
+          │                 │
+          └────────┬────────┘
+                   ▼
+             Weighted Sum
+                   │
+                   ▼
+             Final Ranking
+```
+
+### Exercise 2 — A Simple RAG Pipeline
+
+The second exercise combines:
+
+```text
+Retrieve
+   ↓
+Route
+   ↓
+Generate
+   ↓
+Fallback
+```
+
+#### Query Routing
+
+Different questions may need different amounts of context.
+
+For example:
+
+"What is X?"
+
+usually needs a focused answer.
+
+But:
+
+"What are the different types of X?"
+
+may require broader coverage.
+
+A simple router can change top_k.
+
+```python
+def _route_query(self, question):
+    if any(
+        w in question.lower()
+        for w in ["what", "explain", "describe"]
+    ):
+        return "semantic", 3
+
+    if any(
+        w in question.lower()
+        for w in ["list", "types", "examples"]
+    ):
+        return "comprehensive", 5
+
+    return "semantic", 3
+```
+
+#### Why this matters
+
+Instead of always doing:
+
+`top_k = 5`
+
+you can adapt retrieval to the question.
+
+```text
+Focused question
+      ↓
+Retrieve fewer documents
+      ↓
+Less noise
+
+versus:
+
+Survey question
+      ↓
+Retrieve more documents
+      ↓
+Better coverage
+```
+
+#### Complete Query Flow
+
+```python
+def query(self, question):
+    strategy, top_k = self._route_query(question)
+
+
+    docs = self.vector_retriever.retrieve(question)
+
+    context = "\n\n".join(
+        d.text
+        for d in docs[:top_k]
+    )
+
+    prompt = f"""
+Based on the following context, please answer the question:
+
+Context:
+{context}
+
+Question:
+{question}
+
+Answer:
+"""
+
+    try:
+        return {
+            "answer": self.llm.complete(prompt).text,
+            "status": "success",
+        }
+
+    except Exception:
+        return {
+            "answer": (
+                f"Based on the retrieved documents: "
+                f"{context[:200]}..."
+            ),
+            "status": "llm_error",
+        }
+```
+
+#### Three important lessons
+
+**1. Routing does not have to be complicated**
+
+Even simple rules can change retrieval behavior.
+
+```text
+"What / explain / describe"
+        ↓
+Focused retrieval
+
+"List / types / examples"
+        ↓
+Broader retrieval
+```
+
+You can later replace these rules with a more sophisticated classifier or LLM router if needed.
+
+**2. Retrieval should work without the LLM**
+
+If generation fails, the application still has the retrieved documents.
+
+```text
+Retriever
+   ↓
+Relevant documents
+   ↓
+LLM fails
+   ↓
+Fallback response
+```
+
+This is much better than treating the LLM as the only source of useful information.
+
+**3. Measure before tuning**
+
+The exercise also introduces an evaluator that tests the system against a set of queries.
+
+The principle is:
+
+Measure retrieval and answer quality before changing parameters.
+
+Otherwise, you are tuning blindly.
+
+### FAISS — The Vector Search Library, Not the Database
+
+FAISS is important because it helps clarify the difference between a vector search library and a vector database.
+
+### What Is FAISS?
+
+FAISS is primarily a library for efficient similarity search over vectors.
+
+Think of it as:
+
+A very fast vector calculator/search engine.
+
+It does not automatically provide everything a database provides.
+
+What FAISS stores:
+
+Primarily:
+
+```text
+Vectors
++
+Integer IDs
+```
+
+For example:
+
+```text
+Vector #0 → ID 0
+Vector #1 → ID 1
+Vector #2 → ID 2
+...
+```
+
+What FAISS does not provide by itself:
+
+No document text.
+
+Your original text needs to live somewhere else.
+
+```text
+FAISS
+   ↓
+Vector → ID 102
+
+Database
+   ↓
+ID 102 → "Original document text..."
+```
+
+No built-in metadata database.
+
+For example:
+
+```text
+{
+    "author": "Jane",
+    "year": 2024
+}
+```
+
+would normally be managed outside FAISS if you need rich metadata filtering.
+
+Persistence must be handled explicitly.
+
+An in-memory index does not automatically behave like a durable database.
+
+You can explicitly save an index:
+
+```python
+faiss.write_index(
+    index,
+    "my_index.faiss"
+)
+```
+
+### FAISS Index Types
+
+Different FAISS indexes make different trade-offs.
+
+| Index | How it searches | Main trade-off |
+| :--- | :--- | :--- |
+| IndexFlat | Compares against every vector | Exact but O(n) |
+| IndexIVF | Searches selected clusters | Faster, approximate |
+| IndexLSH | Uses hashing/buckets | Different speed/memory trade-offs, potentially lower recall |
+| IndexHNSW | Navigates a graph | Fast approximate search |
+
+**IndexFlat**
+
+The simplest approach:
+
+```text
+Query
+  ↓
+Compare with vector 1
+Compare with vector 2
+Compare with vector 3
+...
+Compare with every vector
+  ↓
+Return nearest vectors
+```
+
+Very accurate, but expensive for large collections.
+
+Complexity is roughly `O(n)` because every vector is considered.
+
+**IndexIVF**
+
+Vectors are grouped into clusters.
+
+Instead of searching everything:
+
+```text
+Query
+  ↓
+Find nearby clusters
+  ↓
+Search vectors inside those clusters
+```
+
+This reduces the amount of work at the cost of approximate search.
+
+**IndexHNSW**
+
+Uses the same general HNSW graph idea discussed earlier:
+
+```text
+Top layers
+    ↓
+Fast navigation
+    ↓
+Lower layers
+    ↓
+Detailed search
+```
+
+The important point is that FAISS gives you several indexing strategies, not just HNSW.
+
+### FAISS Semantic Search Example
+
+The lab uses the 20 Newsgroups dataset and the Universal Sentence Encoder.
+
+The overall pipeline is:
+
+```text
+Documents
+   ↓
+Preprocess
+   ↓
+Embedding model
+   ↓
+Vectors
+   ↓
+FAISS index
+   ↓
+Search
+```
+
+**1. Preprocess**
+
+```python
+def preprocess_text(text):
+    ...
+```
+
+The preprocessing removes things such as:
+
+- headers
+- email addresses
+- punctuation
+
+and then:
+
+- converts text to lowercase
+- trims unnecessary whitespace
+
+**2. Generate embeddings**
+
+```python
+import tensorflow_hub as hub
+import numpy as np
+
+embed = hub.load(
+    "https://tfhub.dev/google/universal-sentence-encoder/4"
+)
+
+X_use = np.vstack([
+    embed(
+        [preprocess_text(doc)]
+    ).numpy()
+    for doc in documents
+])
+```
+
+**3. Build the FAISS index**
+
+```python
+import faiss
+
+
+dimension = X_use.shape[1]
+
+index = faiss.IndexFlatL2(dimension)
+
+index.add(X_use)
+```
+
+The index now contains the document vectors.
+
+**4. Search**
+
+The query must go through the same preprocessing and embedding pipeline.
+
+```python
+def search(query_text, k=5):
+    q = embed(
+        [preprocess_text(query_text)]
+    ).astype("float32")
+
+    distances, indices = index.search(q, k)
+
+    return distances, indices
+```
+
+### Critical Rule: Documents and Queries Must Use the Same Pipeline
+
+This is the same principle encountered earlier with embedding models.
+
+If your documents are processed with:
+
+```text
+Cleaner A
+   ↓
+Embedding Model A
+```
+
+your query should use:
+
+```text
+Cleaner A
+   ↓
+Embedding Model A
+```
+
+Not:
+
+```text
+Cleaner B
+   ↓
+Embedding Model B
+```
+
+Otherwise, you risk producing vectors that are not comparable in the intended way.
+
+#### Picture it like this
+
+```text
+Documents
+   ↓
+Same preprocessing
+   ↓
+Same embedding model
+   ↓
+Vector space
+        ↑
+        │
+Same preprocessing
+        ↑
+        │
+Same embedding model
+        ↑
+       Query
+```
+
+### FAISS + a Document Store
+
+Because FAISS primarily gives you vector search results and IDs, a lightweight RAG system can pair it with another data store.
+
+```text
+                User Query
+                    │
+                    ▼
+
+              Embedding Model
+                    │
+                    ▼
+               FAISS Index
+                    │
+                    │ nearest vectors
+                    ▼
+             Integer IDs
+             [102, 405]
+                    │
+                    ▼
+          ┌───────────────────┐
+          │ SQLite / Postgres │
+          │ / Key-Value Store │
+          └───────────────────┘
+                    │
+                    │ fetch by ID
+                    ▼
+              Original Text
+                    │
+                    ▼
+               LLM Context
+```
+
+For example:
+
+```text
+FAISS:
+102 → vector
+
+SQLite:
+102 → "Original document text..."
+```
+
+### Do You Need a Vector Database if You Use FAISS?
+
+Not necessarily.
+
+You can build a lightweight local system with:
+
+```text
+FAISS
++
+SQLite / JSON / dictionary
+```
+
+For example:
+
+```text
+FAISS
+  ↓
+Find nearest IDs
+  ↓
+SQLite
+  ↓
+Retrieve text + metadata
+  ↓
+LLM
+```
+
+This can be perfectly reasonable for small applications.
+
+A vector database becomes more useful when you want more functionality behind a unified API, such as:
+
+- vector search
+- document storage
+- metadata filtering
+- CRUD operations
+- persistence
+- concurrency
+- server-side access
+- easier operational management
+
+Examples include:
+
+- Chroma
+- Milvus
+- Qdrant
+- Pinecone
+
+### FAISS vs Vector Databases
+
+| Feature | FAISS | ChromaDB | Milvus |
+| :--- | :--- | :--- | :--- |
+| Type | Vector search library | Vector database | Distributed vector database |
+| Deployment | In-process | Local/server deployments | Distributed/cloud-oriented |
+| Indexes | Flat, IVF, HNSW, PQ, etc. | HNSW-based | Multiple indexing options |
+| Metadata filtering | External | Built in | Built in |
+| Document storage | External | Built in | Database-managed |
+| Best suited for | Fast/custom vector search | Prototyping and RAG applications | Large-scale production systems |
+
+#### The key distinction
+
+Think of it this way:
+
+```text
+FAISS
+= "Help me search vectors very quickly."
+
+Vector Database
+= "Manage my vectors, documents, metadata,
+   persistence, and search as one system."
+```
+
+#### The big picture
+
+The major ideas in this section fit together like this:
+
+| Tool / Technique | Main Problem It Solves |
+| :--- | :--- |
+| Vector Search | Find semantically similar information |
+| BM25 | Find important lexical terms |
+| MMR | Reduce redundant results |
+| MultiQuery | Handle different ways of phrasing a question |
+| SelfQuery | Convert natural language into metadata filters |
+| ParentDocument | Search small chunks but return larger context |
+| Auto-Merging | Reconstruct useful parent context from matching children |
+| Recursive Retriever | Follow references between documents |
+| Query Fusion | Combine results from multiple query variations |
+| Hybrid Search | Combine semantic + lexical retrieval |
+| FAISS | Efficient vector similarity search |
+
+### The Bigger Picture
+
+Plain top-k vector search is only the starting point.
+
+A real RAG system may look more like:
+
+```text
+                    User Query
+                        │
+                        ▼
+
+                 Query Processing
+                        │
+             ┌──────────┴──────────┐
+             │                     │
+             ▼                     ▼
+        Vector Search            BM25
+             │                     │
+             └──────────┬──────────┘
+                        ▼
+                  Fusion / MMR
+                        │
+                        ▼
+                Parent / Context
+                   Retrieval
+                        │
+                        ▼
+                 Reranked Docs
+                        │
+                        ▼
+                    LLM
+                        │
+                        ▼
+                     Answer
+```
+
+The important lesson is:
+
+Retrieval quality is a major part of RAG quality.
+
+The LLM can only work with the information it receives.
+
+If the retriever returns the wrong documents:
+
+```text
+Wrong retrieval
+      ↓
+Bad context
+      ↓
+Bad answer
+```
+
+If retrieval is good:
+
+```text
+Good retrieval
+      ↓
+Relevant context
+      ↓
+Better answer
+```
+
+So when a RAG system performs poorly, don't immediately blame the LLM.
+
+Check the retrieval pipeline first:
+
+- Is the embedding model appropriate?
+- Are the chunks the right size?
+- Is top_k appropriate?
+- Would BM25 help?
+- Is the result set too redundant?
+- Would metadata filtering help?
+- Would a parent/auto-merging strategy provide better context?
+- Would query expansion or fusion improve recall?
+- Should the retrieved results be reranked?
+- Are you actually measuring retrieval quality?
+
+That is the main progression:
+
+```text
+Basic RAG
+   ↓
+Better chunking
+   ↓
+Better retrieval
+   ↓
+Hybrid retrieval
+   ↓
+Reranking / fusion
+   ↓
+Evaluation
+   ↓
+Production RAG
+```

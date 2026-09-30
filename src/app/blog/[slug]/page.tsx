@@ -4,9 +4,75 @@ import matter from "gray-matter";
 import Link from "next/link";
 import rehypePrettyCode from "rehype-pretty-code";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import rehypeSlug from "rehype-slug";
+import GithubSlugger from "github-slugger";
+import "katex/dist/katex.min.css";
 
 interface Props {
   params: { slug: string };
+}
+
+interface TocEntry {
+  depth: 2 | 3;
+  text: string;
+  id: string;
+}
+
+function extractToc(source: string): TocEntry[] {
+  const slugger = new GithubSlugger();
+  const entries: TocEntry[] = [];
+  let inFence = false;
+  for (const line of source.split("\n")) {
+    if (line.startsWith("```")) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) continue;
+    const match = /^(##|###)\s+(.+)$/.exec(line);
+    if (!match) continue;
+    const text = match[2].trim();
+    entries.push({
+      depth: match[1].length as 2 | 3,
+      text,
+      id: slugger.slug(text),
+    });
+  }
+  return entries;
+}
+
+function TableOfContents({ entries }: { entries: TocEntry[] }) {
+  if (entries.length < 4) return null;
+  return (
+    <nav
+      className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-5 mb-10"
+      aria-label="Table of contents"
+    >
+      <p
+        className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3"
+        style={{ fontFamily: "var(--font-jetbrains)" }}
+      >
+        On this page
+      </p>
+      <ul className="space-y-1.5 text-sm">
+        {entries.map((entry) => (
+          <li key={entry.id} className={entry.depth === 3 ? "pl-4" : ""}>
+            <a
+              href={`#${entry.id}`}
+              className={
+                entry.depth === 2
+                  ? "text-accent hover:underline"
+                  : "text-muted-foreground hover:text-accent transition-colors"
+              }
+            >
+              {entry.text}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  );
 }
 
 const components = {
@@ -102,6 +168,7 @@ export default async function BlogPost({ params }: Props) {
   }
 
   const { content, data } = matter(source);
+  const tocEntries = extractToc(content);
 
   return (
     <div
@@ -156,6 +223,8 @@ export default async function BlogPost({ params }: Props) {
           </div>
         </header>
 
+        <TableOfContents entries={tocEntries} />
+
         <div
           className="prose prose-invert max-w-none"
           style={
@@ -173,8 +242,10 @@ export default async function BlogPost({ params }: Props) {
             components={components}
             options={{
               mdxOptions: {
-                remarkPlugins: [remarkGfm],
+                remarkPlugins: [remarkGfm, remarkMath],
                 rehypePlugins: [
+                  rehypeSlug,
+                  [rehypeKatex, { throwOnError: false }],
                   [
                     rehypePrettyCode,
                     {

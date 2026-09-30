@@ -53,7 +53,7 @@ All of this is **in-context learning**: zero training, zero fine-tuning. The exa
 
 ## Chat models & messages
 
-**ELI5:** Imagine that the model has an amnesia or doesn't remember the context every time you are talking to it. It forgets everything between requests, so a "conversation" is just you re-reading the whole chat log to it every time.
+**ELI5:** Imagine that the model doesn't remember the context every time you are talking to it. It forgets everything between requests, so a "conversation" is just you re-reading the whole chat log to it every time.
 
 Messages are labeled lines in that log:
 
@@ -139,7 +139,7 @@ Behind the scenes it grabs the most similar chunks, pastes them into the prompt,
 
 ## Memory
 
-**ELI5:** the model has amnesia or doesn't have a memory — to fix this, in every conversation turn you send back the whole conversation transcript onto the prompt.
+**ELI5:** the model doesn't have a memory — to fix this, in every conversation turn you send back the whole conversation transcript onto the prompt.
 
 ```
 Turn 1: You ask a question
