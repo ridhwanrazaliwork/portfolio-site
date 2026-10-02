@@ -46,7 +46,7 @@ function TableOfContents({ entries }: { entries: TocEntry[] }) {
   if (entries.length < 4) return null;
   return (
     <nav
-      className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-5 mb-10"
+      className="rounded-xl border border-border bg-card p-5 mb-10"
       aria-label="Table of contents"
     >
       <p
@@ -93,20 +93,20 @@ const components = {
   table: (props: React.HTMLAttributes<HTMLTableElement>) => (
     <div className="overflow-x-auto my-6">
       <table
-        className="w-full text-sm border-collapse"
+        className="w-full text-sm border-collapse border border-border"
         {...props}
       />
     </div>
   ),
   th: (props: React.ThHTMLAttributes<HTMLTableCellElement>) => (
     <th
-      className="border-b border-white/[0.1] px-3 py-2 text-left font-semibold"
+      className="border-b border-border px-3 py-2 text-left font-semibold"
       {...props}
     />
   ),
   td: (props: React.TdHTMLAttributes<HTMLTableCellElement>) => (
     <td
-      className="border-b border-white/[0.06] px-3 py-2 align-top"
+      className="border-b border-border px-3 py-2 align-top"
       {...props}
     />
   ),

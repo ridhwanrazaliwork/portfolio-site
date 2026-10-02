@@ -1,0 +1,716 @@
+---
+title: "Learning Agentic AI and RAG course Part 5"
+date: "2026-10-01"
+description: "Part 5 of my IBM RAG & Agentic AI course notes: the agentic protocol zoo (ACP, ANP, AG-UI, A2A, AP2), then a hands-on MCP deep-dive — building servers with FastMCP, all three transports, running real servers like Context7, custom clients, roots and sampling, permission-aware security, and wiring MCP into LangGraph agents."
+tags: ["MCP", "FastMCP", "Agents", "LangGraph", "Security"]
+---
+
+This is Part 5 of my notes on the IBM RAG & Agentic AI course on Coursera (see Part 1 for GenAI basics, Part 2 for RAG, Part 3 for multimodal apps, and Part 4 for agents). In Part 4, the models learned to *act* using tools, loops, self-critique, and teamwork. This chapter explains the plumbing underneath all of that: **how agents connect to tools, data, and one another without custom glue code for every pairing**. The headliner is **MCP** (Model Context Protocol), and the chapter is almost entirely hands-on: five labs with complete code.
+
+> *Note: this series is my personal summary of IBM's RAG & Agentic AI course on Coursera. The course materials, labs, and the screenshots in these posts belong to IBM / Skills Network — everything here is my own beginner-friendly rewrite for learning purposes.*
+
+---
+
+## The protocol zoo: why agents need standards
+
+**ELI5:** Imagine every appliance in your kitchen needed its own proprietary wall socket. That was the agent world around 2024: LangGraph, CrewAI, AutoGen, and BeeAI each used its own tool format, and every agent-to-agent connection required a custom integration. **Agentic protocols** fix this the same way USB did: one plug shape that everyone follows.
+
+Two things the notes are careful to draw a boundary around:
+
+- Protocols define **communication standards**: message schemas, discovery, authentication, and RPC formats.
+- Protocols do **not** manage orchestration: they do not define state transitions or execution scheduling. That is still your LangGraph/CrewAI code's job. Protocols are the wire, not the brain.
+
+The six protocols the chapter covers:
+
+| Protocol | Backed by | What it standardizes |
+| :--- | :--- | :--- |
+| **MCP** (Model Context Protocol) | Anthropic | Agent ↔ tools/data/files/vector stores — the integration tier |
+| **A2A** (Agent2Agent) | Google, Linux Foundation-hosted | Agent ↔ agent: discovery → auth → task exchange over HTTPS + JSON-RPC 2.0 (with SSE streaming) |
+| **ACP** (Agent Communication Protocol) | IBM (from BeeAI) | Universal agent-to-agent collaboration across frameworks and clouds |
+| **ANP** (Agent Network Protocol) | Open source | Agents as native web entities communicating HTTP-style across the public internet |
+| **AG-UI** (Agent-User Interaction) | Event-driven | Backend agent states/intents pushed directly to frontend UIs, no brittle custom hooks |
+| **AP2** (Agent Payments) | Google | Agent-initiated payments via cryptographically signed **Mandates** |
+
+The chapter's showcase example ties three of them together — *"order noise-cancelling headphones under $250"*:
+
+1. **MCP** connects to retailer APIs, pulls product specs, verifies the user's preference context.
+2. **A2A** orchestrates secure negotiation between the buyer agent and the merchant/inventory agent.
+3. **AP2** generates and validates the Intent/Cart Mandates and executes payment with no checkout friction.
+
+When evaluating any of these protocols, consider four criteria: efficiency (round-trip overhead), reliability (network tolerance, such as ACP's async-first design and A2A's SSE), scalability, and security (identity, tool-level RBAC, and payload encryption).
+
+## MCP: the universal USB port
+
+**ELI5:** MCP is a **universal USB port for AI**. Before MCP, connecting an LLM to email, files, or a database meant writing a custom connector for each service and often rewriting it for every model provider. With MCP, a tool exposes itself *once* in a standard format, and every MCP-speaking agent can use it. One port, many devices.
+
+The chapter's stated core advantages:
+
+- **Standardized integration:** one design pattern decouples models from tool providers entirely.
+- **Security:** OAuth 2.0 and token-based authentication are built into the model.
+- **Factual grounding:** real-time context pulled straight from source systems — an anti-hallucination measure.
+- **Agentic enabler:** dynamic multi-step reasoning needs tools that are discoverable at runtime.
+
+### The three-role architecture
+
+- **MCP Host:** the orchestration engine (your app, Claude Desktop, or an IDE) that manages connections.
+- **MCP Client:** lives inside the host, maintains a 1:1 session with one server, and speaks JSON-RPC 2.0.
+- **MCP Server:** exposes tools and data over **stdio** (a local subprocess) or **HTTP** (a remote endpoint).
+
+**ELI5:** The host is the manager, the client is the phone call, and the server is the business that provides the service. One host can make several calls at once.
+
+One host can run *many* clients in parallel, aggregating several servers' tools into a single unified catalog. Remember that — it becomes the `MultiServerMCPClient` example at the end.
+
+The **connection lifecycle** has three phases. First, the client sends its protocol version and capabilities, and the server responds with what it supports. Next, the client acknowledges with an `initialized` notification and normal operation begins: it discovers and invokes tools while the server can send notifications and logs. Finally, the client initiates a clean shutdown. Every client below follows these same three phases.
+
+**ELI5:** It is like starting a phone call: introduce yourselves, have the conversation, then hang up cleanly.
+
+### The three server primitives
+
+This is the most important table in the chapter because it explains what MCP servers actually offer:
+
+| Primitive | Who controls it | Nature | Example |
+| :--- | :--- | :--- | :--- |
+| **Tools** | The model | Active — executes actions/mutations | Query a DB, call an API, write a file |
+| **Resources** | The application | Passive — read-only data endpoints by URI | `mcp://resource/{id}/settings` |
+| **Prompts** | The user | Reusable parameterized templates | Code-review template, summary format |
+
+Tools are what Part 4's agents were already consuming. Resources are background context that the *host* attaches selectively. Prompts are reusable instructions that the *user* invokes. An MCP server can expose all three, and the labs build one that does.
+
+**ELI5:** A tool is an action button, a resource is a reference shelf, and a prompt is a saved instruction card.
+
+---
+
+## Hands-on: Hello World MCP server
+
+The main lab builds a calculator MCP server. The complete example, with all three primitives in one server, fits on a postcard:
+
+```python
+from fastmcp import FastMCP
+
+mcp = FastMCP(
+    name="CalculatorMCPServer",
+    instructions="""
+        This server provides data analysis tools.
+        Call add() to add two numbers.
+    """
+)
+
+@mcp.tool
+def add(a: int, b: int) -> int:
+    """
+    Add two integers together.
+
+    Args:
+        a (int): The first integer.
+        b (int): The second integer.
+
+    Returns:
+        int: The sum of the two integers.
+
+    Examples:
+        >>> add(3, 5)
+        8
+    """
+    return a + b
+
+@mcp.tool
+def subtract(a: int, b: int) -> int:
+    """Subtract one integer from another."""
+    return a - b
+
+@mcp.resource("file://documents/{name}")
+def read_document(name: str) -> str:
+    """Read a document by name."""
+    try:
+        with open(f"path/{name}", "r") as f:
+            return f.read()
+    except FileNotFoundError:
+        return f"Document '{name}' not found"
+
+@mcp.prompt(title="Code Review")
+def review_code(code: str) -> str:
+    return f"Please review this code:\n\n{code}"
+```
+
+The `@mcp.tool` decorator works much like LangChain's `@tool`: type hints become the JSON schema, and the docstring becomes the description the model reads. The difference is that this function is not registered only with an in-process agent; it is exposed as a **network-addressable service** that any MCP client can discover.
+
+Two details from the lab worth internalizing:
+
+- **Resources: the URI and the path are different things.** `"file://documents/{name}"` is the MCP *address* that the AI requests; `path/{name}` is where the file actually lives on disk. The lab deliberately separates them: one resource returns a template string, while the other reads a downloaded file. This shows how the `{name}` parameter flows from the URI into your function.
+- **`FastMCP(name=..., instructions=...)`:** the `instructions` field is a description for the whole server, telling agents what it does and which tool to try first.
+
+### Calling it: the in-memory client
+
+The simplest possible client keeps the server and client in the same Python process, so it needs no separate transport object:
+
+```python
+from fastmcp import Client
+
+client = Client(mcp)   # in-memory transport: pass the server object directly
+
+async with client:
+    result = await client.call_tool("add", {"a": 4, "b": 5})
+```
+
+Even though the server is in the same process, the client still uses the full client-server protocol. That is the point: you can test the real interaction without a network connection. Because a server may take time to respond, everything uses `async`/`await`: `async with client` manages the connection lifecycle (MCP initialize → operate → shutdown), and `await` pauses this task instead of freezing the whole program.
+
+**ELI5:** `await` means "wait for this answer, but let the rest of the program keep working."
+
+The response contains several representations, so the lab shows three ways to read it:
+
+```python
+print(response.data)                      # 9  — the actual typed answer
+print(response.content[0].text)           # "9" — raw text content
+print(response.structured_content)        # dictionary form
+```
+
+The lab also demonstrates `await client.list_tools()` for discovery — you can inspect each tool's `.name`, `.description`, and `.inputSchema` before ever calling it. **Discovery-before-invocation** is the MCP pattern: the model finds out what exists at runtime, from the server itself.
+
+---
+
+## The three transports
+
+**ELI5:** MCP keeps the same client/server API regardless of how the two sides communicate. Only the delivery method changes.
+
+Think of it like ordering food:
+
+- **In-memory** → you hand the order directly to the kitchen.
+- **STDIO** → you communicate with a local kitchen through a pipe.
+- **HTTP** → you send the order to a kitchen over the network.
+
+The **transport** is simply the "wire" used to move MCP messages between the client and server.
+
+All three can use the same MCP operations. What changes is **how the messages travel**.
+
+---
+
+### 1. In-Memory — Direct Connection
+
+**Best for:** development and unit testing.
+
+With an in-memory transport, the client directly references the MCP server object.
+
+There is:
+
+- No network
+- No subprocess
+- No HTTP server
+- Essentially no communication overhead
+
+```python
+from fastmcp import Client
+
+client = Client(mcp)
+
+async with client:
+    result = await client.call_tool("add", {"a": 4, "b": 5})
+```
+
+### 2. STDIO — Local Subprocess
+
+Best for: local MCP servers and development.
+
+STDIO stands for standard input and standard output.
+
+Instead of connecting directly to the server object, the MCP client starts the server as a separate process and communicates with it through:
+
+```text
+stdin  → client sends messages
+stdout → server sends messages back
+```
+
+```python
+from fastmcp import Client
+from fastmcp.client.transports import StdioTransport
+
+transport_stdio = StdioTransport(
+    command="python",
+    args=["stdio_server.py"]    # the server file with mcp.run()
+)
+stdio_client = Client(transport_stdio)
+
+async with stdio_client as client:
+    result = await client.call_tool("add", {"a": 4, "b": 5})
+```
+
+You do not need to start the server separately; the client launches it.
+
+Why use STDIO?
+
+It is particularly useful when the MCP server is a local tool running on the same machine.
+
+There is no need to expose a network port just to communicate with a local process.
+
+### 3. HTTP — Remote Web Service
+
+The server becomes a web service, and the client connects to its URL; there is no subprocess to manage:
+
+```python
+# Server side: run as an HTTP service
+mcp.run(transport="http", host="127.0.0.1", port=8000)
+# or async: asyncio.create_task(mcp.run_http_async(port=PORT))
+# The /mcp endpoint is created automatically for JSON-RPC communication
+
+# Client side
+from fastmcp.client.transports import StreamableHttpTransport
+
+transport_http = StreamableHttpTransport(url="http://127.0.0.1:8000/mcp")
+http_client = Client(transport_http)
+```
+
+Under the hood, all messages use **JSON-RPC 2.0**. HTTP wraps them in POST requests. SSE (Server-Sent Events) used to be the push channel but is now deprecated in favor of full-duplex STDIO/HTTP. The lab's rule of thumb is: use **STDIO for local tools and development** (no network overhead), and **HTTP for remote servers** that need authentication, routing, and encryption.
+
+**ELI5:** In-memory is a conversation in the same room, STDIO is a conversation through a local pipe, and HTTP is a phone call over the network.
+
+## Hands-on: running an *existing* server (Context7)
+
+This lab consumes a published MCP server. **Context7** serves up-to-date code documentation to LLMs and AI code editors through two tools: `resolve-library-id` (search for a library's Context7 ID) and `query-docs` (fetch documentation using that ID).
+
+Local, via npx (a Node.js runner — it downloads the Context7 server package, installs it temporarily, and starts it listening on stdin/stdout; think `pip install` + `python -m` in one command):
+
+```python
+stdio_transport = StdioTransport(
+    command="npx",
+    args=["-y", "@upstash/context7-mcp"]   # -y = auto-confirm install
+)
+stdio_client = Client(stdio_transport)
+```
+
+Remote, via HTTP — same Client API, different wire:
+
+```python
+http_transport = StreamableHttpTransport(url="https://mcp.context7.com/mcp")
+http_client = Client(http_transport)
+```
+
+Then the three-step tool workflow, which is a useful micro-agent pattern in itself:
+
+```python
+async with stdio_client as client:
+    # Step 1: discover
+    tools = await client.list_tools()
+    print(tools[0].name)   # "resolve-library-id"
+
+    # Step 2: resolve the library ID
+    response = await client.call_tool("resolve-library-id", {
+        "libraryName": "fastmcp",
+        "query": "I want to create a new MCP server using the fastmcp Python framework"
+    })
+    print(response.content[0].text)
+
+    # Step 3: fetch docs with the resolved ID
+    docs = await client.call_tool("query-docs", {
+        "libraryId": "/llmstxt/gofastmcp_llms-full_txt",
+        "query": "I want to fetch the code snippets and the documentation",
+        "tokens": 5000
+    })
+    print(docs.content[0].text[:1000])
+```
+
+The arguments for each call are not guessed; they come from the tool's `.inputSchema`, discovered in step 1. `resolve-library-id` returns candidate libraries with descriptions, snippet counts, and benchmark scores. You choose an ID and pass it to `query-docs`. This is the kind of live documentation that LLM-powered editors use to stay current with libraries.
+
+**The takeaway:** with MCP, tools stop being code you must write yourself and become **services you subscribe to**. Someone else maintains the server, while you connect to and use it.
+
+---
+
+## Hands-on: building a custom MCP client
+
+Now we look at the other side of the connection. The client lab builds a minimal Python client over STDIO:
+
+```python
+from contextlib import AsyncExitStack
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
+
+class MCPClient:
+    def __init__(self):
+        self.session = None
+        self.exit_stack = AsyncExitStack()
+
+    async def connect(self, server_script: str):
+        server_params = StdioServerParameters(
+            command="python",
+            args=[server_script]
+        )
+        stdio_transport = await self.exit_stack.enter_async_context(
+            stdio_client(server_params)
+        )
+        read, write = stdio_transport
+        self.session = await self.exit_stack.enter_async_context(
+            ClientSession(read, write)
+        )
+        await self.session.initialize()   # the MCP handshake
+```
+
+`AsyncExitStack` manages the transport and session, which are async context managers that must be closed in order. The stack ensures they are released cleanly, even when an error occurs.
+
+On top of that session, the client wraps the four operations the lab's CLI exposes (`tools | call | resources | read | prompts | prompt`):
+
+```python
+async def list_tools(self):
+    return (await self.session.list_tools()).tools
+
+async def call_tool(self, tool_name: str, arguments: dict):
+    return await self.session.call_tool(tool_name, arguments)
+
+async def list_resources(self):
+    return (await self.session.list_resource_templates()).resourceTemplates
+
+async def read_resource(self, uri: str):
+    return await self.session.read_resource(uri)
+
+async def list_prompts(self):
+    return (await self.session.list_prompts()).prompts
+
+async def get_prompt(self, prompt_name: str, arguments: dict):
+    return await self.session.get_prompt(prompt_name, arguments)
+```
+
+Note the lower-level SDK (`mcp`, not FastMCP): FastMCP is the wrapper, while the raw SDK is what you use when building client *applications*. The lab pairs it with a small echo/file server (`@mcp.tool echo`, `write_file`, a `file://resources/{filename}` resource, and a `review_file` prompt) so every primitive is exercised end to end.
+
+---
+
+## Hands-on: the advanced lab — HTTP, roots, and sampling
+
+This lab assembles a production-style setup: an HTTP file server with security boundaries and two applications built on one base client. It applies Part 4's base/derived inheritance pattern to MCP.
+
+### The server: an HTTP file server with roots
+
+```python
+from fastmcp import FastMCP
+from pathlib import Path
+
+mcp = FastMCP("HTTP File Server")
+BASE_DIR = Path(__file__).parent / "workspace"
+
+def is_within_roots(path: Path) -> bool:
+    """Check if path is within allowed roots directory."""
+    try:
+        path.resolve().relative_to(BASE_DIR.resolve())
+        return True
+    except ValueError:
+        return False
+
+@mcp.tool()
+def read_file(filepath: str) -> str:
+    """Read a file from the workspace directory."""
+    path = BASE_DIR / filepath
+    if not is_within_roots(path):
+        return "Error: Access denied - path outside workspace roots"
+    ...
+    return path.read_text()
+```
+
+**Roots** define the filesystem sandbox. Because an LLM may pass `"../../etc/passwd"` when prompted, *every* file-touching tool validates the resolved path against the trusted base directory before accessing disk. This blocks path-traversal attacks at the boundary. The server also exposes the file as a **resource** (`@mcp.resource("file://workspace/{filename}")`, using the same roots check) and two **prompts** (`review_code` and `analyze_security` templates), then runs over HTTP:
+
+**ELI5:** A root is a fence around the files the server is allowed to touch. A path outside the fence is rejected, even if a model asks for it.
+
+```python
+mcp.run(transport="http", host="127.0.0.1", port=8000)
+```
+
+### The base client, HTTP edition
+
+This has the same skeleton as the STDIO client but uses a different transport. That is the lab's central lesson: **the transport is the only thing that changes**.
+
+```python
+from mcp.client.streamable_http import streamablehttp_client
+
+class MCPHTTPClient:
+    def __init__(self, server_url: str, roots_dir: str):
+        self.exit_stack = AsyncExitStack()
+        self._connected = False
+
+    async def connect(self):
+        if self._connected:      # lazy, idempotent connection
+            return
+        read, write, _ = await self.exit_stack.enter_async_context(
+            streamablehttp_client(f"{self.server_url}/mcp")
+        )
+        self.session = await self.exit_stack.enter_async_context(ClientSession(read, write))
+        await self.session.initialize()
+        self._connected = True
+```
+
+Derived applications inherit everything from the base client: a **GUI client app** for manual exploration and an **AI host app** that connects the server to an LLM.
+
+### The AI host: MCP → OpenAI function calling
+
+The host app is where MCP meets Part 4's tool-calling loop. The key is a translation layer that converts each MCP tool's schema into OpenAI function-calling format:
+
+```python
+class MCPHTTPHostApp(MCPHTTPClient):
+    async def get_available_tools(self):
+        await self.connect()
+        openai_tools = []
+        for tool in await self.list_tools():
+            schema = {
+                "type": "function",
+                "function": {
+                    "name": tool.name,
+                    "description": tool.description or f"Execute {tool.name}",
+                    "parameters": tool.inputSchema,
+                }
+            }
+            openai_tools.append(schema)
+        return openai_tools
+
+    async def chat(self, user_message: str):
+        self.conversation_history.append({"role": "user", "content": user_message})
+        response = self.llm_client.chat.completions.create(
+            model=self.model,
+            messages=self.conversation_history,
+            tools=await self.get_available_tools(),
+            tool_choice="auto"
+        )
+        if assistant_message.tool_calls:
+            for tool_call in assistant_message.tool_calls:
+                tool_result = await self.execute_tool(
+                    tool_call.function.name,
+                    json.loads(tool_call.function.arguments)
+                )
+                self.conversation_history.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": str(tool_result)
+                })
+            # Final LLM pass with tool results in context
+            final = self.llm_client.chat.completions.create(
+                model=self.model,
+                messages=self.conversation_history
+            )
+            return final.choices[0].message.content
+```
+
+This is the same five-step tool-calling loop from Part 4, but the tool catalog now comes *live from an MCP server* instead of from hand-registered Python functions.
+
+The **synthetic tools** technique is another useful detail. Resources and prompts are not tools, so the LLM cannot call them directly. The host wraps them as pseudo-tools:
+
+```python
+openai_tools.append({
+    "type": "function",
+    "function": {
+        "name": "mcp_read_resource",
+        "description": "Read resource by URI",
+        "parameters": {"type": "object", "properties": {"uri": {"type": "string"}}}
+    }
+})
+```
+
+When the LLM calls `mcp_read_resource`, the host intercepts the name and performs `session.read_resource(uri)` behind the scenes. The result is one flat tool list backed by three primitive types.
+
+**Sampling** completes the lab's trio: it lets the *server* request an LLM completion *from the client's model*. This is server-initiated AI, so it is gated behind explicit human approval; a remote server cannot run arbitrary prompts through your model. (Roots protect your filesystem, sampling approval protects your model, and elicitation in the next section protects your actions.)
+
+**ELI5:** Sampling lets the server ask your model for help. Approval is the permission slip that prevents a server from using your model without your knowledge.
+
+---
+
+## Hands-on: the security lab — permissions, elicitation, audit
+
+The last lab turns the file server into a security system. Its design maps directly onto Part 4's risk matrix: start with read-only access, require human approval for destructive operations, and record activity everywhere.
+
+### Risk-tagged tools + audit logging
+
+The server tags every tool with a risk level in its docstring and writes an audit-log entry for every mutation:
+
+```python
+BASE_DIR = Path(__file__).parent / "data"
+mcp = FastMCP("Permission-Aware MCP Server")
+
+@mcp.tool()
+def read_file(filepath: str) -> str:
+    """Read a file from the data directory. (Risk: LOW)"""
+    ...
+
+@mcp.tool()
+def write_file(filepath: str, content: str) -> str:
+    """Write content to a file in the data directory. (Risk: MEDIUM)"""
+    file_path = BASE_DIR / filepath
+    file_path.write_text(content)
+    with open(BASE_DIR / "audit.log", "a") as f:
+        f.write(f"[{datetime.now().isoformat()}] WRITE: {filepath}\n")
+    return f"Successfully wrote to {filepath}"
+
+@mcp.tool()
+def delete_file(filepath: str) -> str:
+    """Delete a file from the data directory. (Risk: HIGH)"""
+    ...
+
+@mcp.tool()
+def execute_command(command: str) -> str:
+    """Execute a system command. (Risk: CRITICAL)"""
+    # Simulation only — actual execution disabled for security
+    ...
+```
+
+`read → write → delete → execute` represents low, medium, high, and critical risk. This is the risk ladder that agent-security designs must address.
+
+### The allow/ask/deny permission tier
+
+The permission-aware client loads its policy from `permissions.json` and checks it *before* running any tool:
+
+```python
+class MCPPermissionClient:
+    def load_permissions(self) -> dict:
+        return {
+            "read_file": "allow",
+            "write_file": "ask",
+            "delete_file": "deny",
+            "execute_command": "deny"
+        }
+
+    def check_permission(self, tool_name: str, arguments: dict) -> str:
+        # Argument-specific rules can override (e.g. "write_file:{\"path\": \"notes.md\"}": "allow")
+        arg_key = f"{tool_name}:{json.dumps(arguments, sort_keys=True)}"
+        if arg_key in self.permissions:
+            return self.permissions[arg_key]
+        return self.permissions.get(tool_name, "ask")   # default: ask
+
+    async def call_tool_with_permission(self, tool_name, arguments=None, approved=False):
+        permission = self.check_permission(tool_name, arguments)
+        if permission == "deny":
+            self.log_audit(f"TOOL: {tool_name}", "DENIED", "Policy: deny")
+            return "Permission denied"
+        if permission == "ask" and not approved:
+            self.log_audit(f"TOOL: {tool_name}", "ASK", "Awaiting approval")
+            return "Permission required... Please approve this operation"
+        self.log_audit(f"TOOL: {tool_name}", "ALLOWED", f"Policy: {permission}")
+        return await self.session.call_tool(tool_name, arguments=arguments)
+```
+
+There are three tiers: auto-run, prompt the human, or block outright. The policy also supports **argument-specific overrides** (for example, allow writing to one whitelisted path but deny it everywhere else) and an audit log for every decision. Note that `deny` still logs: an audit trail that records only successes is not an audit trail.
+
+**ELI5:** `allow` means "go ahead," `ask` means "pause and ask me," and `deny` means "never do this."
+
+### Elicitation: structured human approval
+
+**Elicitation** is MCP's mechanism for a server to pause and request structured, type-validated input from the user. It uses a Pydantic schema rather than unstructured free text:
+
+```python
+class ApprovalSchema(BaseModel):
+    approved: bool
+    reason: str
+
+@mcp.tool()
+async def delete_file(ctx: Context, filepath: str) -> str:
+    response = await ctx.elicit(
+        message=f"Delete {filepath}?",
+        response_type=ApprovalSchema
+    )
+    if not response.approved:
+        return f"Cancelled: {response.reason}"
+    Path(filepath).unlink()
+    return "Deleted"
+```
+
+The `Context` object is the server-side toolbox for this: `await ctx.info()` / `ctx.warning()` / `ctx.error()` provide structured logging and real-time progress reporting to the client, while `ctx.elicit()` creates approval gates. Destructive operations are wrapped in elicitation, sampling requires explicit approval, and nothing destructive runs on autopilot.
+
+The lab's AI host app ties everything together. It includes each tool's permission and risk level in the description shown to the LLM (`"(Permission: ask, Risk: high)"`), so the *model itself* can consider risk when choosing tools. It runs `assess_risk()` before every execution and implements a pending-approval flow: when a tool returns "Permission required," the host stores the call in `pending_approval` and asks the user. A typed "yes/approve/confirm" retries it with `approved=True`; "no/cancel" aborts it.
+
+That is the full Part 4 risk matrix implemented in practice: high-stakes operations are gated by HITL, user-visible operations are guarded by schema checks, and everything is recorded in the log.
+
+---
+
+## MCP + the Part 4 stack: LangGraph agents over MCP
+
+The Hello World lab concludes by connecting MCP back to everything from Part 4. With `langchain-mcp-adapters`, an MCP server's tools become LangChain tools and plug directly into `create_react_agent`:
+
+```python
+from langchain_mcp_adapters.tools import load_mcp_tools
+from langgraph.prebuilt import create_react_agent
+from mcp import ClientSession
+from mcp.client.streamable_http import streamablehttp_client
+
+async with streamablehttp_client(f"http://127.0.0.1:8000/mcp") as (read, write, _sid):
+    async with ClientSession(read, write) as session:
+        await session.initialize()
+
+        # Convert MCP tools -> LangChain tools from the LIVE session
+        tools = await load_mcp_tools(session)
+
+        # Build the agent WHILE the session is still open
+        agent = create_react_agent(model=llm, tools=tools)
+
+        # async, not invoke — the session must stay alive
+        response = await agent.ainvoke(
+            {"messages": "Use the add tool to add 2 and 1 and let me know if you used a tool."}
+        )
+```
+
+The lab highlights two gotchas. First, the agent must be built **while the session is open** because the tools reference the live session. Second, you must use `ainvoke`: the async context managers keep the child process or connection alive while the agent's ReAct loop runs. STDIO works the same way: swap `streamablehttp_client` for `stdio_client` and keep the same `(read, write)` streams, session, and `load_mcp_tools` call.
+
+The final piece is **`MultiServerMCPClient`**, which turns the multi-server catalog from the architecture section into working code. Configure several servers together and load all their tools with one call:
+
+```python
+from langchain_mcp_adapters.client import MultiServerMCPClient
+
+client = MultiServerMCPClient({
+    "stdio-client": {
+        "command": "python",
+        "args": ["stdio_server.py"],
+        "transport": "stdio"
+    },
+    "http-client": {
+        "url": "http://127.0.0.1:8000/mcp",
+        "transport": "streamable_http"
+    }
+})
+
+tools = await client.get_tools()
+
+llm = "openai:gpt-5-nano"
+agent = create_react_agent(model=llm, tools=tools)
+agent_response = await agent.ainvoke({"messages": "whats 8 + 7? use tools"})
+```
+
+There are no manual `ClientSession` objects, nested async context managers, or per-server initialization steps to juggle. Configure once, call `get_tools()`, and build one agent. The lab's practical prompting tip is to explicitly tell the agent to *use the tools*. Otherwise, the LLM may answer from its own knowledge and skip the MCP tools entirely, as in the classic case where a calculator question is answered from memory.
+
+**This closes the loop:** Part 4 gave us agents with a ReAct loop over hand-written tools. Now the same `create_react_agent` consumes a tool catalog assembled live from any number of MCP servers, combining local subprocesses and remote services in one flat list. The agent code did not change; the tool supply chain did.
+
+**ELI5:** The agent is still the same worker. MCP simply gives it a larger, up-to-date toolbox.
+
+---
+
+## Production checklist
+
+Here is a single checklist of the practices repeated throughout the labs:
+
+- **Architecture:** base/derived client pattern with `AsyncExitStack` — pure protocol logic in the base class, app concerns in derived ones; lazy, idempotent `connect()`; no leaked sessions.
+- **Filesystem:** validate every path with `is_within_roots()` against declared roots — never trust model-supplied paths.
+- **Permissions:** `allow` / `ask` / `deny` tiers from `permissions.json`, with argument-specific overrides; default to `ask`.
+- **Destructive actions:** wrap in `ctx.elicit()` with a Pydantic schema; gate server-initiated sampling behind explicit human approval.
+- **Audit:** immutable timestamped log of every decision — including denials.
+- **Transports:** STDIO for local subprocesses and dev; Streamable HTTP for remote/microservices; SSE is deprecated.
+- **Agent wiring:** build agents inside the open session, use `ainvoke`, and prompt the model to actually use the tools.
+
+---
+
+### Cheat sheet
+
+The condensed code reference for everything above:
+
+| Task | Key call |
+| :--- | :--- |
+| Create a server | `mcp = FastMCP(name="...", instructions="...")` |
+| Expose a tool | `@mcp.tool` on a typed function (docstring = description, hints = schema) |
+| Expose a resource | `@mcp.resource("file://documents/{name}")` — URI address ≠ disk path |
+| Expose a prompt | `@mcp.prompt(title="Code Review")` — reusable parameterized template |
+| In-memory client (dev) | `Client(mcp)` — pass the server object directly |
+| STDIO client (local) | `StdioTransport(command="python", args=["server.py"])` + `mcp.run()` on the server |
+| HTTP client (remote) | `StreamableHttpTransport(url="http://host:8000/mcp")` + `mcp.run(transport="http", ...)` on the server |
+| Run published servers | `StdioTransport(command="npx", args=["-y", "@upstash/context7-mcp"])` or URL-based HTTP |
+| Discover tools | `tools = await client.list_tools()` → `.name`, `.description`, `.inputSchema` |
+| Invoke a tool | `await client.call_tool("add", {"a": 4, "b": 5})` |
+| Read a result | `response.data` (typed) / `response.content[0].text` / `response.structured_content` |
+| Raw SDK session | `stdio_client(params)` → `ClientSession(read, write)` → `await session.initialize()` |
+| Session safety | `AsyncExitStack` for transport + session; lazy idempotent `connect()` |
+| Filesystem sandbox (roots) | `path.resolve().relative_to(BASE_DIR.resolve())` check in every file tool |
+| Server → user input | `await ctx.elicit(message=..., response_type=PydanticSchema)` |
+| Server logging/progress | `await ctx.info(...)` / `ctx.warning(...)` / `ctx.error(...)` |
+| Server → client LLM | Sampling — server requests a completion from the client's model, human-approved |
+| Permission tier check | `"allow" / "ask" / "deny"` from `permissions.json`; argument-specific keys override |
+| Audit trail | `[timestamp] TOOL: name - Decision: ALLOWED/DENIED/ASK` appended to `audit.log` |
+| MCP → OpenAI host | Translate `tool.inputSchema` → function schema; append `role: "tool"` with `tool_call_id` |
+| Synthetic tools | Wrap resources/prompts as `mcp_read_resource` / `mcp_get_prompt` pseudo-tools |
+| MCP → LangGraph agent | `tools = await load_mcp_tools(session)` → `create_react_agent(model, tools)` → `ainvoke` |
+| Multi-server catalog | `MultiServerMCPClient({"a": {...stdio}, "b": {...http}})` → one `get_tools()` → one agent |

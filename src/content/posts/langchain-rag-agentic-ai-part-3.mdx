@@ -1,0 +1,586 @@
+---
+title: "Learning Agentic AI and RAG course Part 3"
+date: "2026-10-01"
+description: "Beginner-friendly notes on multimodal GenAI: image captioning and visual question answering, generating images from text, and four hands-on apps — a fashion \"style finder\", an AI nutrition coach, a meeting assistant, and a text-to-speech storyteller."
+tags: ["Multimodal", "Computer Vision", "Whisper", "DALL-E", "TTS"]
+---
+
+This is Part 3 of my notes on the IBM RAG & Agentic AI course on Coursera (see Part 1 for the GenAI basics and Part 2 for RAG). This chapter is all about **multimodal** AI — models that don't just read text, but can also see images, hear audio, and speak back. I'll cover the concepts first, then walk through five hands-on projects: an image captioner, an image generator, a fashion "style finder" (it works like Google's image search), an AI nutrition coach, and a meeting assistant, plus a bonus text-to-speech storyteller.
+
+**How to read this post:** it covers a lot of ground, so here are two ways through:
+
+- **Skim track:** read the ELI5 explanations and the "what each app does" summaries, skip the code walkthroughs.
+- **Full track:** everything as written — the code snippets are the interesting parts, they're all you need to build these apps yourself.
+
+> *Note: this series is my personal summary of IBM's RAG & Agentic AI course on Coursera. The course materials, labs, and the screenshots in these posts belong to IBM / Skills Network — everything here is my own beginner-friendly rewrite for learning purposes.*
+
+---
+
+## The big idea: what does "multimodal" even mean?
+
+**ELI5:** most AI models you've met so far are one-trick ponies. A chatbot reads text and writes text. An image classifier looks at pictures. A **multimodal** model is the student who's good at everything at once — you can hand it a photo *and* a question about the photo, and it handles both together in one go.
+
+Three terms here:
+
+| Term | What it means | ELI5 version |
+| :--- | :--- | :--- |
+| **Generative AI** | Models that create new content (text, images, audio) rather than just labeling existing stuff | It *makes* things, not just sorts things |
+| **Multimodal AI** | Systems that process multiple data types (text, images, audio, video) together | It can see *and* hear *and* read |
+| **Multimodal Generative AI** | Both combined: one model that understands and creates across modalities | Show it a photo, it writes you a story about it |
+
+A bit of history in one paragraph: for years, text models (Transformers) and vision models (CNNs) lived in separate worlds and couldn't share what they "knew". The breakthrough came with models like **CLIP** (OpenAI, 2021), which showed that images and text could be mapped into one shared "meaning space". Today, models like Meta's **Llama 4 Maverick** and OpenAI's GPT-4o do vision + text natively in a single architecture — which is exactly what we'll be using in the projects below.
+
+Where is this actually useful? A few examples that aren't hype:
+
+| Sector | Old way | Multimodal way |
+| :--- | :--- | :--- |
+| Insurance claims | Adjuster reads the report, then looks at damage photos separately | Model reads the claim text *and* the flood-damage photo in one query |
+| Retail | Separate image search and review sentiment models | Correlate product photos with what customers write about them |
+| Healthcare | Radiologist reads scans, another person reads charts | Joint analysis of scans + patient history |
+| Accessibility | Manual alt-text and captioning | Automatic image descriptions and live captions |
+
+### Computer vision in 60 seconds
+
+**Computer vision (CV)** is the AI field about making sense of images and video. The classic pipeline looks like this:
+
+1. **Get the image** — from a camera or a file.
+2. **Clean it up** — resize, normalize colors, remove noise.
+3. **Find features** — edges, textures, shapes (things humans do instantly without thinking).
+4. **Recognize patterns** — a neural network turns those features into "this is a cat, sitting at x=120, y=340".
+5. **Do something with it** — a label, coordinates, or a downstream action.
+
+The 2010s breakthrough was **CNNs** (Convolutional Neural Networks) — networks that mimic the visual cortex by learning features layer by layer, from edges up to whole objects. Modern CV models handle real-time detection, image generation, and medical diagnosis. For our purposes, the important one is **ResNet50**, a pre-trained CNN we'll borrow as a "picture-to-numbers machine" in the Style Finder project.
+
+### The other senses: text, speech, and text-to-speech
+
+Vision is only one modality. The language side has three pillars:
+
+- **Text processing (NLP):** understanding written language — grammar, meaning, extracting names and dates, classifying sentiment.
+- **Speech processing:** turning sound into text (**ASR — automatic speech recognition**, like Whisper which we'll use in the meeting assistant), plus voice biometrics and "who spoke when" diarization.
+- **Text-to-speech (TTS):** the reverse — synthesizing natural-sounding speech from text (like gTTS in the storyteller project).
+
+Put together, these enable things like real-time meeting transcription, screen readers, audiobook generation, and voice assistants that listen *and* talk.
+
+### What's actually hard about multimodal AI
+
+An honest section, because the challenges are real:
+
+- **Text and images are very different animals.** Aligning "the word cat" with "the visual appearance of a cat" inside one model is genuinely difficult, especially for things the model never saw during training.
+- **Hallucinations get worse.** A text model can make up facts; a multimodal model can describe objects that aren't even in the image. Production systems add cross-checks (e.g. a separate object detector validating the LLM's claims).
+- **Bias and privacy.** Training data skews toward Western contexts, and vision/audio models can ingest biometric data (faces, voices), which raises real privacy and deepfake concerns.
+- **Cost.** Running multiple encoders is expensive. Techniques like quantization and distillation help, but "throw a vision model at it" is never free.
+
+## Talking to a vision model: image captioning and visual Q&A
+
+Now the hands-on part. The core skill of this whole post fits in one sentence: **turn your image into a base64 string, attach it to a chat message, and ask your question.**
+
+### Why base64?
+
+Chat APIs speak JSON, and JSON is text-only — it can't carry raw binary image data. So we convert the image bytes into a **base64 string** (a text representation of binary data), wrap it in a `data:image/jpeg;base64,...` URI, and paste it right into the message. The model "sees" the image inside the conversation.
+
+![An image being converted into a feature vector](/blog/part3-captioning-vector.webp)
+
+### The three-step pattern
+
+Every vision app in this post follows the same skeleton:
+
+1. **Encode** the image to base64.
+2. **Build a message** containing both text and the image.
+3. **Send it** and read the reply.
+
+Here's the pattern against IBM watsonx.ai:
+
+```python
+import base64
+import requests
+from ibm_watsonx_ai import Credentials
+from ibm_watsonx_ai.foundation_models import ModelInference
+from ibm_watsonx_ai.foundation_models.schema import TextChatParameters
+
+credentials = Credentials(url="https://us-south.ml.cloud.ibm.com")
+
+params = TextChatParameters(temperature=0.2, top_p=0.5)
+
+model = ModelInference(
+    model_id="meta-llama/llama-3-2-11b-vision-instruct",
+    credentials=credentials,
+    project_id="skills-network",
+    params=params,
+)
+
+def encode_images_to_base64(image_urls):
+    """Download images and convert each to a base64 string."""
+    encoded_images = []
+    for url in image_urls:
+        response = requests.get(url)
+        if response.status_code == 200:
+            encoded_images.append(base64.b64encode(response.content).decode("utf-8"))
+        else:
+            print(f"Failed to fetch {url}")
+            encoded_images.append(None)
+    return encoded_images
+
+def generate_model_response(encoded_image, user_query, assistant_prompt="You are a helpful assistant. Answer the following user query in 1 or 2 sentences: "):
+    """Send one image + one question to the model."""
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": assistant_prompt + user_query},
+                {
+                    "type": "image_url",
+                    "image_url": {"url": "data:image/jpeg;base64," + encoded_image},
+                },
+            ],
+        }
+    ]
+    response = model.chat(messages=messages)
+    return response["choices"][0]["message"]["content"]
+```
+
+Note the message structure — it's the OpenAI-compatible multi-part `content` list you'll see in every project in this post:
+
+- one `{"type": "text", ...}` part with your question,
+- one `{"type": "image_url", ...}` part with the encoded image.
+
+### What can you ask?
+
+With images downloaded and encoded, the same one function covers captioning, counting, damage assessment, and reading labels:
+
+```python
+# Captioning: describe the whole photo
+generate_model_response(encoded_images[0], "Describe the photo")
+
+# Object detection: counting
+generate_model_response(encoded_images[1], "How many cars are in this image?")
+
+# Real-world judgment (insurance claim photo)
+generate_model_response(encoded_images[2], "How severe is the damage in this image?")
+
+# Reading text in images (a nutrition label)
+generate_model_response(encoded_images[3], "How much sodium is in this product?")
+```
+
+The damage-assessment one is the sleeper hit: the model looked at a flooded house photo and rated the damage severity — exactly the kind of task that speeds up insurance claim processing. And reading a nutrition label from a photo is the seed of the Nutrition Coach app we'll build later.
+
+One gotcha worth knowing: the lab's title says **Granite Vision** (`ibm/granite-vision-3-2-2b`, a small open-source vision model tuned for reading tables, charts, and documents), but the notebook code actually calls `meta-llama/llama-3-2-11b-vision-instruct`. Both work with the exact same code — just swap the `model_id`.
+
+## Making images: DALL-E
+
+This image model might be a little bit outdated. For latest state of the art image model please take a look at 'https://artificialanalysis.ai'. And try to generate it yourself in 'https://openrouter.ai/models?output_modalities=image'. At the time of writing this GPT Image 2.5 is the best image model.
+
+```python
+from openai import OpenAI
+
+client = OpenAI()
+
+response = client.images.generate(
+    model="dall-e-3",
+    prompt="a white siamese cat",
+    size="1024x1024",
+    quality="standard",
+    n=1,
+)
+
+url = response.data[0].url
+```
+
+The knobs that matter:
+
+| Parameter | Options | Notes |
+| :--- | :--- | :--- |
+| `model` | `dall-e-2`, `dall-e-3` | DALL-E 3 is higher quality; DALL-E 2 supports edits/variations |
+| `size` | DALL-E 2: 256, 512, 1024 square; DALL-E 3: 1024x1024, 1024x1792, 1792x1024 | Square by default |
+| `quality` | `standard`, `hd` (DALL-E 3 only) | HD costs more, adds detail |
+| `n` | Up to 10 (DALL-E 2), 1 (DALL-E 3) | DALL-E 3: make parallel calls instead |
+| `response_format` | `url` or `b64_json` | **URLs expire after one hour** — save the bytes if you want to keep them |
+
+### Prompting for images
+
+Note: this is dependent on the image model itself. different model might require different prompting method.
+
+The difference between a mediocre and a great generated image is almost entirely the prompt. Four levers:
+
+- **Subject specifics:** name exact breeds, textures, materials, colors ("fluffy white Siamese cat", not "cat").
+- **Lighting & atmosphere:** "golden hour", "soft studio backlighting", "dramatic chiaroscuro".
+- **Composition:** "macro closeup", "shallow depth of field", "isometric view".
+- **Artistic style:** "Renaissance oil painting", "35mm film photography".
+
+Also worth knowing the API has **edits** (inpainting: upload an image plus a mask, the transparent area of the mask gets replaced — the prompt must describe the *full* new image, not just the erased patch) and **variations** (generate alternates of an existing square PNG under 4MB).
+
+## Style Finder: the "Google image search" for fashion
+
+This one was my favorite project of the chapter. You upload a photo of an outfit, and the app identifies the clothing items and tells you what they are and where to buy them. It works like a visual version of Google search — but built from three simple parts you already know.
+
+![Style Finder landing page](/blog/part3-style-finder-landing.webp)
+
+<video src="https://cf-courses-data.s3.us.cloud-object-storage.appdomain.cloud/-huMmZxaIMkbS7bL5bLvxQ/style-finder-demo.mp4" width="1000" height="600" loop controls autoPlay muted></video>
+
+### The pipeline in one picture
+
+```
+Your photo
+    ↓
+ResNet50 → feature vector (what it "looks like" as numbers)
+    ↓
+Cosine similarity vs. catalog embeddings (find the closest outfit)
+    ↓
+Llama 4 Maverick + your image (describe items, prices, links)
+    ↓
+Gradio page with the full analysis
+```
+
+The dataset behind it is fun: the lab authors scraped the first 10 pages of taylorswiftstyle.com with BeautifulSoup, collecting outfit photos, item names, and prices. Every image was then run through ResNet50 to produce an **embedding** — a long list of numbers that captures what the image looks like. All those vectors ship pre-computed in a pickle file, loaded with plain pandas:
+
+```python
+import pandas as pd
+
+self.data = pd.read_pickle("swift-style-embeddings.pkl")
+```
+
+### Step 1: one image, two representations
+
+The clever bit of this app is that each image becomes *two* things: a base64 string (so the LLM can see it) and a feature vector (so we can search with it). One encode pass produces both:
+
+```python
+class ImageProcessor:
+    def __init__(self, image_size=(224, 224),
+                 norm_mean=[0.485, 0.456, 0.406],
+                 norm_std=[0.229, 0.224, 0.225]):
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.model = resnet50(pretrained=True).to(self.device)
+        self.model.eval()
+        self.preprocess = transforms.Compose([
+            transforms.Resize(image_size),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=norm_mean, std=norm_std),
+        ])
+
+    def encode_image(self, image_input, is_url=True):
+        if is_url:
+            response = requests.get(image_input)
+            response.raise_for_status()
+            image = Image.open(BytesIO(response.content)).convert("RGB")
+        else:
+            image = Image.open(image_input).convert("RGB")
+
+        # Representation #1: base64 string for the LLM
+        buffered = BytesIO()
+        image.save(buffered, format="JPEG")
+        base64_string = base64.b64encode(buffered.getvalue()).decode("utf-8")
+
+        # Representation #2: feature vector for similarity search
+        input_tensor = self.preprocess(image).unsqueeze(0).to(self.device)
+        with torch.no_grad():
+            features = self.model(input_tensor)
+        feature_vector = features.cpu().numpy().flatten()
+
+        return {"base64": base64_string, "vector": feature_vector}
+```
+
+**ELI5 on ResNet50:** it's a CNN pre-trained on millions of images. We don't use it to classify — we chop off the "answer" part and keep the internal representation, a ~2000-number knowledge of the image. Two visually similar outfits end up with similar knowledge.
+
+### Step 2: find the closest match
+
+```python
+def find_closest_match(self, user_vector, dataset):
+    dataset_vectors = np.vstack(dataset["Embedding"].dropna().values)
+    similarities = cosine_similarity(user_vector.reshape(1, -1), dataset_vectors)
+    closest_index = np.argmax(similarities)
+    similarity_score = similarities[0][closest_index]
+    return dataset.iloc[closest_index], similarity_score
+```
+
+**Cosine similarity** compares the angle between two vectors: 1.0 means "practically the same picture", 0 means "unrelated". We compare your photo's vector against every catalog vector and keep the winner. If the score is at least **0.8** (a config threshold), the app treats it as an exact match; below that, it switches to "similar items" mode. Then all catalog rows sharing the matched outfit's image URL are pulled — so you get every piece of the outfit, each with name, price, and link.
+
+### Step 3: let the LLM write the catalog entry
+
+The matched items are formatted into a list and handed to the multimodal model *together with your photo*, so it can both see the clothes and cite the catalog data:
+
+```python
+assistant_prompt = (
+    f"You're conducting a professional retail catalog analysis. "
+    f"This image shows standard clothing items available in department stores. "
+    f"Focus exclusively on professional fashion analysis for a clothing retailer. "
+    f"ITEM DETAILS (always include this section in your response):\n{items_description}\n\n"
+    "Please:\n"
+    "1. Identify and describe the clothing items objectively (colors, patterns, materials)\n"
+    "2. Categorize the overall style (business, casual, etc.)\n"
+    "3. Include the ITEM DETAILS section at the end\n\n"
+    "This is for a professional retail catalog. Use formal, clinical language."
+)
+
+response = self.model.chat(messages=messages)  # the usual text+image payload
+```
+
+The whole thing is wrapped in a Gradio UI: three example images with "Use Example" buttons, an upload box, and a markdown panel for the result. Model settings: temperature 0.2, top_p 0.6, max_tokens 2000, with a fallback response if the model returns something too short.
+
+**Why this app is a big deal conceptually:** it's multimodal RAG. Part 2 retrieved text chunks with text embeddings; here we retrieve *catalog rows* with *image embeddings*, then hand the retrieved context to a multimodal LLM. Same pattern, new modality.
+
+## AI Nutrition Coach: a photo in, a meal analysis out
+
+The second project flips the interaction: instead of finding similar items, the model plays domain expert. You upload a photo of a meal, and it identifies every food item, estimates portions and calories, breaks down nutrients, and rates how healthy the meal is.
+
+![Nutrition coach result example](/blog/part3-nutrition-result.webp)
+
+![Continued analysis output](/blog/part3-nutrition-continued.webp)
+
+![Health evaluation and disclaimer](/blog/part3-nutrition-health.webp)
+
+### The trick is the prompt, not the model
+
+Same Llama 4 Maverick model as before. The entire "nutritionist expertise" comes from a structured prompt with a strict six-part format:
+
+```python
+assistant_prompt = """
+You are an expert nutritionist. Your task is to analyze the food items displayed in the image and provide a detailed nutritional assessment using the following format:
+
+1. **Identification**: List each identified food item clearly, one per line.
+2. **Portion Size & Calorie Estimation**: For each identified food item, specify the portion size and provide an estimated number of calories. Use bullet points with the following structure:
+- **[Food Item]**: [Portion Size], [Number of Calories] calories
+
+Example:
+*   **Salmon**: 6 ounces, 210 calories
+*   **Asparagus**: 3 spears, 25 calories
+
+3. **Total Calories**: Provide the total number of calories for all food items.
+
+4. **Nutrient Breakdown**: Include a breakdown of key nutrients such as **Protein**, **Carbohydrates**, **Fats**, **Vitamins**, and **Minerals**.
+
+5. **Health Evaluation**: Evaluate the healthiness of the meal in one paragraph.
+
+6. **Disclaimer**: Include the following exact text as a disclaimer:
+
+The nutritional information and calorie estimates provided are approximate and are based on general food data.
+Actual values may vary depending on factors such as portion size, specific ingredients, preparation methods, and individual variations.
+For precise dietary advice or medical guidance, consult a qualified nutritionist or healthcare provider.
+
+Format your response exactly like the template above to ensure consistency.
+"""
+```
+
+We add some method from part 1 of our note here: **few-shot examples** inside the prompt (the salmon/asparagus bullets) so the model can't misread the format, and a **mandatory disclaimer** — because an LLM estimating calories from a photo is genuinely approximate, and any real app must say so.
+
+### The web app around it
+
+The plumbing is the same encode-and-send pattern, wrapped in Flask:
+
+```python
+@app.route("/", methods=["GET", "POST"])
+def index():
+    if request.method == "POST":
+        user_query = request.form.get("user_query")
+        uploaded_file = request.files.get("file")
+
+        if uploaded_file:
+            encoded_image = input_image_setup(uploaded_file)
+            response = generate_model_response(encoded_image, user_query, assistant_prompt)
+            return render_template("index.html", user_query=user_query, response=response)
+
+    return render_template("index.html")
+```
+
+Since the model returns markdown-ish text, a small `format_response` function converts the `**bold**` headers and `*` bullets into HTML (`<strong>`, `<li>`, `<ul>`) so the page renders it nicely.
+
+**Takeaway:** "vision + a rigid prompt schema" turns a general-purpose model into a passable domain expert. The prompt *is* the product.
+
+## AI Meeting Assistant: from audio recording to action items
+
+The third project changes modality again — this time in: audio. You upload a meeting recording, and the app transcribes it, cleans up the jargon, and produces structured minutes with a task list.
+
+![Meeting assistant workflow](/blog/part3-meeting-workflow.webp)
+
+![Final app: generated minutes and task list](/blog/part3-meeting-result.webp)
+
+### Step 1: transcribe with Whisper
+
+**Whisper** is OpenAI's open-source speech-to-text model (you could explore others speech-to-text provider too like Elevenlabs, Azure etc). Via Hugging Face's `transformers`, transcription is a two-liner:
+
+```python
+from transformers import pipeline
+
+pipe = pipeline(
+    "automatic-speech-recognition",
+    model="openai/whisper-medium",
+    chunk_length_s=30,
+)
+
+raw_transcript = pipe(audio_file, batch_size=8)["text"]
+```
+
+`chunk_length_s=30` splits long audio into 30-second chunks so the model can process recordings of any length.
+
+### Step 2: clean up the transcript
+
+Raw transcripts are messy — no punctuation, and spoken jargon like "four zero one k" or "HSA". A first LLM pass fixes terminology (this prompt is tuned for financial meetings, expanding acronyms and normalizing spoken numbers):
+
+```python
+def remove_non_ascii(text):
+    return "".join(i for i in text if ord(i) < 128)
+
+def product_assistant(ascii_transcript):
+    system_prompt = """You are an intelligent assistant specializing in financial products;
+    your task is to process transcripts of earnings calls, ensuring that all references to
+    financial products and common financial terms are in the correct format. ..."""
+
+    messages = [{"role": "user", "content": system_prompt + "\n" + ascii_transcript}]
+
+    granite_model = ModelInference(
+        model_id="ibm/granite-4-h-small",
+        credentials=credentials,
+        project_id=project_id,
+        params=TextChatParameters(temperature=0.2, top_p=0.6),
+    )
+
+    return granite_model.chat(messages=messages)["choices"][0]["message"]["content"]
+```
+
+### Step 3: generate minutes with a LangChain chain
+
+Finally, a LangChain pipeline turns the cleaned transcript into the deliverable:
+
+```python
+template = """
+You are an AI meeting assistant.
+
+Based on the meeting transcript below, generate useful meeting minutes.
+
+Include:
+1. A concise summary of the meeting.
+2. Key points discussed.
+3. Decisions that were made.
+4. A task list with actionable items, assignees, and deadlines if they are mentioned.
+5. Any relevant notes or context.
+
+Do not describe what you are doing.
+Do not repeat the instructions.
+Do not return an empty template.
+Use only information from the provided transcript.
+
+Meeting transcript:
+{context}
+
+Generate the meeting minutes now.
+"""
+
+prompt = ChatPromptTemplate.from_template(template)
+
+chain = (
+    {"context": RunnablePassthrough()}
+    | prompt
+    | llm
+    | StrOutputParser()
+)
+```
+
+That pipe syntax is LangChain's LCEL: the transcript flows through the prompt template, into the LLM, and out as a plain string. The Gradio app wraps all three steps into one button: upload audio → minutes textbox → downloadable `meeting_minutes_and_tasks.txt` file.
+
+```python
+def transcript_audio(audio_file):
+    pipe = pipeline("automatic-speech-recognition",
+                    model="openai/whisper-medium", chunk_length_s=30)
+    raw_transcript = pipe(audio_file, batch_size=8)["text"]
+
+    adjusted_transcript = product_assistant(remove_non_ascii(raw_transcript))
+    result = chain.invoke({"context": adjusted_transcript})
+
+    with open("meeting_minutes_and_tasks.txt", "w") as file:
+        file.write(result)
+
+    return result, "meeting_minutes_and_tasks.txt"
+```
+
+Three models, three jobs: Whisper listens, Granite fixes terminology, and the chain writes the minutes. Each step is independently testable — the same modular pattern as the RAG pipelines from Part 2.
+
+## Bonus: a text-to-speech storyteller
+
+The meeting assistant goes audio→text. This mini-project goes the other way: text→speech. The idea — give a topic, get an educational story, hear it read aloud.
+
+```python
+def generate_story(topic):
+    prompt = f"""Write an engaging and educational story about {topic} for beginners.
+            Use simple and clear language to explain basic concepts.
+            Include interesting facts and keep it friendly and encouraging.
+            The story should be around 200-300 words and end with a brief summary of what we learned.
+            Make it perfect for someone just starting to learn about this topic."""
+
+    response = model.generate_text(prompt=prompt)
+    return response
+
+story = generate_story("the life cycle of butterflies")
+```
+
+Then gTTS (Google's text-to-speech library) turns the story into audio — buffered fully in memory so it can be played inline in the notebook:
+
+```python
+from gtts import gTTS
+from IPython.display import Audio
+import io
+
+tts = gTTS(story)
+
+audio_bytes = io.BytesIO()
+tts.write_to_fp(audio_bytes)
+audio_bytes.seek(0)
+
+Audio(audio_bytes.read(), autoplay=False)
+
+# or save it as a file:
+tts.save("generated_story.mp3")
+```
+
+The full loop: topic → LLM story (prompted for beginner-friendly tone) → gTTS speech → audio player. It's the smallest project here, but it completes the picture: text in, voice out.
+
+## Text-to-video and image-to-video: the frontier
+
+One more modality, briefly: generating *video*. The mechanics, minus the math:
+
+**Text-to-video (T2V):** your prompt is encoded into semantic vectors, which guide a **diffusion model** (the same family of models behind image generators) to iteratively denoise random noise into video frames. The hard part is **temporal consistency** — keeping objects, lighting, and motion stable across frames. Two techniques handle that: 3D U-Nets that treat time as a third spatial dimension, and temporal transformers that let frames "pay attention" to each other. A final decoder expands the frames into pixels, sometimes with interpolation to boost the frame rate.
+
+**Image-to-video (I2V):** start from a still image, extract its spatial features, predict motion (via optical flow — estimating pixel-by-pixel movement), then synthesize the in-between frames with GANs or VAEs. This is what "animate this photo" features do.
+
+The current model landscape based on the IBM notes.
+
+(Could be outdated, please take a look at 'https://artificialanalysis.ai' for the latest SOTA video model. And try to generate it yourself in 'https://openrouter.ai/models?output_modalities=video') At the time of writing this, Wan 3.0 and Seedance 2.5 is the best Video model:
+
+| Model | Type | What it's known for |
+| :--- | :--- | :--- |
+| OpenAI Sora | T2V | Up to 60s clips, physics and camera motion |
+| Google Veo 2 | T2V | Cinematic coherence, Gemini integration |
+| Runway Gen-4 | T2V | Character consistency, storytelling controls |
+| Step-Video-T2V | T2V | Open source, 30B parameters |
+| Google Whisk Animate | I2V | Animates stills to 8s 720p clips |
+| MiniMax Hailuo | T2V + I2V | Director-style motion controls |
+
+## Wrap-up: what multimodal models are good and bad at
+
+**Genuinely strong at:**
+
+- Cross-modal reasoning: answering questions that need both seeing and reading.
+- Transfer: a vision-language model adapts to new domains with minimal fine-tuning.
+- Redundancy: when one modality is noisy (dark photo), the other (your text context) compensates.
+
+**Still weak at:**
+
+- Multimodal hallucination: describing objects that aren't in the image.
+- Compute cost: latency and infrastructure bills grow fast.
+- Cultural gaps: models miss region-specific visual cues their training data lacked.
+
+Real deployments already exist: wearables that narrate the world for visually impaired users (Envision/GPT-4), end-to-end driving models that read raw camera feeds (Waymo EMMA), and pathology assistants that pair slide imaging with LLM reasoning (PathChat).
+
+### Cheat sheet
+
+The condensed code reference for everything above:
+
+| Task | Key call |
+| :--- | :--- |
+| Encode image for LLM | `base64.b64encode(image_bytes).decode("utf-8")` → `"data:image/jpeg;base64," + b64` |
+| Ask a vision model | `model.chat(messages=...)` with `text` + `image_url` content parts |
+| Caption / count / read labels | Same call, different `user_query` |
+| Generate an image | `client.images.generate(model=..., prompt=..., size=..., quality=..., response_format="b64_json")` |
+| Image similarity search | ResNet50 features + `cosine_similarity(user_vector, dataset_vectors)` → `argmax` |
+| Transcribe audio | `pipeline("automatic-speech-recognition", model="openai/whisper-medium", chunk_length_s=30)` |
+| Text to speech | `gTTS(text)` → `tts.save("out.mp3")` or in-memory `write_to_fp` |
+| Story from a topic | `model.generate_text(prompt=...)` with a beginner-friendly story prompt |
+
+Common parameters across the watsonx calls in this post: `temperature=0.2` (low, for consistent factual output), `top_p` around 0.5-0.6, `max_tokens=2000` when the response format is long. The one consistent architecture lesson: every app in this chapter is just **encode the input → build a message → retrieve context if needed → let the LLM answer** — and that scales from a caption to a full RAG-style fashion search engine.

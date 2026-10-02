@@ -1,0 +1,995 @@
+---
+title: "Learning Agentic AI and RAG course Part 4"
+date: "2026-10-01"
+description: "Part 4 of my IBM RAG & Agentic AI course notes: when to use agents, tool calling in LangChain, self-improving LangGraph patterns (Reflection, Reflexion, ReAct), the DocChat multi-agent RAG project, and a tour of CrewAI, AG2 (AutoGen) and BeeAI."
+tags: ["AI Agents", "LangGraph", "CrewAI", "AutoGen", "BeeAI"]
+---
+
+This is Part 4 of my notes on the IBM RAG & Agentic AI course on Coursera (see Part 1 for GenAI basics, Part 2 for RAG, and Part 3 for multimodal apps). This part brings together three chapters: the fundamentals of building AI agents, agentic AI with LangChain and LangGraph, and multi-agent frameworks such as CrewAI, AG2/AutoGen, and BeeAI.
+
+> *Note: this series is my personal summary of IBM's RAG & Agentic AI course on Coursera. The course materials, labs, and the screenshots in these posts belong to IBM / Skills Network — everything here is my own beginner-friendly rewrite for learning purposes.*
+
+---
+
+## The big idea: when should a model start acting?
+
+**ELI5:** Everything we've built so far (chatbots, RAG pipelines, and vision apps) follows the same shape: a question goes in, and an answer comes out. An **AI agent** is a model with *hands*: tools it can call, memory it can keep, and a loop it can run until the job is done. Instead of guessing the answer to "What's the weather in Paris?", it *calls a weather API, reads the result, and then answers*.
+
+| Paradigm | Execution Flow | Primary Best Use | Core Advantages | Major Limitations |
+| :--- | :--- | :--- | :--- | :--- |
+| **Single LLM** | Direct Input → Output | Summarization, classification | Fast, lowest cost, simple | Stateless, zero adaptability |
+| **Structured Workflow** | Predefined branching code paths | Compliance, ETL, transactional claims | Traceable, auditable, predictable | Rigid, brittle with ambiguous data |
+| **Autonomous Agent** | Plan → Act → Observe loop | Open-ended research, dynamic troubleshooting | Flexible, self-healing, adaptive | Non-deterministic, expensive, complex |
+
+One more distinction that trips people up: **AI Agents vs Agentic AI**.
+
+- **AI agents:** Autonomous, reactive entities built for narrow, well-defined *single* tasks, such as a customer-service bot or an email-triage assistant.
+- **Agentic AI:** Often refers to *multi-agent* systems in which specialized agents coordinate toward a complex, high-level goal through task decomposition, dynamic roles, and inter-agent communication.
+
+A single agent may reason linearly ($A \to B$); an agentic system plans iteratively (for example, with ReAct, Chain-of-Thought, or Tree of Thoughts), shares persistent memory, and scales across distributed workflows.
+
+### The 4-criteria decision framework
+
+Before reaching for an agent, run this checklist:
+
+1. **Task ambiguity vs. predictability:** if you can map every decision path in advance, use a workflow. If the path requires exploration, iterative feedback, or creative reasoning, that's agent territory.
+2. **Value vs. cost envelope:** agents can consume **10× to 100× more tokens** than static workflows because of their exploratory loops. Reserve them for high-ROI problems.
+3. **Minimum viable capability check:** benchmark the agent on 3–5 non-negotiable domain skills (source filtering, code verification, anomaly detection…). If it fails baseline reliability, scale back to a guided workflow.
+4. **Failure blast radius & reversibility:** agents are fine when mistakes are low-impact and reversible. Full autonomy is the wrong call when an error compromises health, safety, or financial integrity.
+
+And the explicit **when NOT to use autonomous agents** list: zero-error/safety-critical systems (medical diagnosis execution, autonomous trading), heavily regulated environments that need 100% deterministic audit trails, real-time low-latency constraints (fraud scoring), and high-volume low-margin tasks (FAQ-style support).
+
+The course's rule of thumb is worth taping to your monitor: **start simple** (atomic LLM calls), **default to workflows** (when you need consistency and audit trails), and **deploy agents selectively** (only for non-linear tasks that strictly require runtime adaptation). Production systems usually end up hybrid — a rigid outer workflow that hands bounded sub-tasks to agents inside.
+
+---
+
+## Giving the LLM hands: tool calling
+
+**ELI5:** Here's the part that surprises many people: the LLM does **not** execute anything. It is like a lawyer who can only write letters. It writes a *request* ("please run `get_weather` with `location=Paris`"), your code does the actual work, and the result is added back to the conversation so the model can formulate its final answer.
+
+The five-step loop:
+
+1. **Tool definition:** functions are given to the model with names, descriptions, and parameter schemas.
+2. **Model decision:** the LLM generates a tool call payload (e.g., `{"name": "get_weather", "args": {"location": "Paris"}}`).
+3. **Execution:** *your application* runs the function.
+4. **Result passing:** the tool's return value is added back to the conversation context.
+5. **Final response:** the LLM synthesizes a natural-language answer from the output.
+
+### Building a tool
+
+LangChain's `@tool` decorator turns an ordinary function into a tool. It registers the function, generates a JSON schema from its type hints, and packages its docstring as the description the model reads when deciding *when* to use it:
+
+```python
+from langchain_core.tools import tool
+from pydantic import BaseModel, Field
+
+class WeatherInput(BaseModel):
+    location: str = Field(description="City name")
+
+@tool("get_weather", args_schema=WeatherInput)
+def get_weather(location: str) -> str:
+    """Fetch current weather for a specific location."""
+    return f"14°C in {location}"
+
+# Direct test invocation, no LLM needed
+output = get_weather.invoke({"location": "Paris"})
+```
+
+Then you bind the tool to a model and parse what comes back:
+
+```python
+llm = ChatOpenAI(model="gpt-4o", temperature=0)
+llm_with_tools = llm.bind_tools([get_weather])
+
+ai_msg = llm_with_tools.invoke("What is the weather in Paris?")
+
+if ai_msg.tool_calls:
+    for tool_call in ai_msg.tool_calls:
+        if tool_call["name"] == "get_weather":
+            tool_result = get_weather.invoke(tool_call["args"])
+```
+
+The suggested calls live in `.tool_calls` of the `AIMessage` — a list of `{"name": ..., "args": ..., "id": ...}` dicts. The `id` matters: it's how each result gets matched back to its request when you send `ToolMessage`s back to the model.
+
+### First project: a math assistant agent
+
+The lab builds the classic starting point: an agent that performs arithmetic honestly, using code execution rather than LLM guesswork. You define several `@tool` functions (`add`, `subtract`, `multiply`, and `divide`, plus one that parses numbers from free text) and wire them into an agent:
+
+```python
+from langchain.agents import initialize_agent, AgentType
+
+agent = initialize_agent(
+    [add_tool],
+    llm,
+    agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
+    verbose=True,
+    handle_parsing_errors=True
+)
+
+response = agent.run("What is 25 raised to the 0.5 power plus 15?")
+```
+
+The lab exercise is useful: build a **power tool** that parses inputs such as `"2^3"`, `"2 to the power of 3"`, or `"2 3"` with a regular expression, then give it to the same agent. With `verbose=True`, you can watch ReAct execute in the console: the agent receives the question, chooses a tool, executes it, observes the result, and writes the final answer. It is simple, but it is the complete agent loop in miniature.
+
+Worth knowing: `initialize_agent` and the legacy `AgentExecutor` are deprecated. The modern replacement is LangGraph's prebuilt agent — same behavior, graph runtime:
+
+```python
+from langgraph.prebuilt import create_react_agent
+
+agent_exec = create_react_agent(model=llm, tools=[sum_numbers_from_text])
+msgs = agent_exec.invoke({"messages": [("human", "Add the numbers -10, -20, -30")]})
+```
+
+The notebook shows the same task built both ways, and the LangGraph version is where the course points for anything new.
+
+### Manual tool calling: keeping a hand on the wheel
+
+This lab highlights an important control point: you do not have to let the framework execute tool calls automatically. **Manual tool calling** means intercepting the model's *suggested* calls, validating them yourself, and running the functions under your own rules.
+
+**ELI5:** The model can ask to press a button, but your application decides whether that button is safe to press. Manual calling puts a human- or code-controlled checkpoint between the request and the action.
+
+```python
+tool_map = {"multiply": multiply}
+
+for tool_call in ai_msg.tool_calls:
+    tool_name = tool_call["name"]
+    tool_args = tool_call["args"]
+
+    # Tool filtering: only authorized tools get through
+    if tool_name not in tool_map:
+        continue
+
+    # Business logic guardrails before execution
+    if tool_args.get("a", 0) < 0 or tool_args.get("b", 0) < 0:
+        raise ValueError("Negative numbers are not allowed by policy.")
+
+    # Execute with the tool_call object -> produces a ToolMessage
+    tool_msg = selected_tool.invoke(tool_call)
+    messages.append(tool_msg)
+
+# Send ToolMessage(s) back for the final synthesized answer
+final_response = llm_with_tools.invoke(messages)
+print(final_response.content)
+```
+
+Why go manual instead of just letting the agent runtime handle it? Production reasons, per the lab:
+
+- **Conditional execution** — decide *whether* to run at all (e.g., ask a human before a write action).
+- **Business logic enforcement** — block requests that violate enterprise constraints.
+- **Tool whitelisting** — discard unrecognized or unapproved tool requests.
+- **Custom error handling** — intercept edge cases and feed structured, human-readable guidance back to the model instead of a stack trace.
+
+Two labs reinforce this idea. "Build Interactive LLM Agents with Tools" walks through the raw loop: build `add`/`subtract`/`multiply` tools, bind them, inspect the `AIMessage` and its `tool_calls`, execute the calls, wrap the results in `ToolMessage`s, and request the final answer. Its tip-calculator exercise (`calculate_tip`, a `TipAgent` class that wraps bind → invoke → parse → execute → `ToolMessage` → final answer) repeats the same loop until it becomes familiar. The "Manual Tool-Calling Agent" lab then shows why you might want this control: the code above is the central idea.
+
+### The built-in toolbox
+
+LangChain ships a huge catalog of prebuilt tools and toolkits, categorized:
+
+| Category | Examples |
+| :--- | :--- |
+| **Search** | SerpAPI / Google Search, Tavily (AI-optimized, returns direct answers), Wikipedia |
+| **Code & data** | Python REPL, Pandas DataFrame, SQL Database Toolkit, LLMMathChain, JSON Toolkit |
+| **Web interaction** | Requests toolkit, Playwright headless browser, ArXiv |
+| **Productivity** | Gmail / Office365, Slack, GitHub, Google Calendar |
+| **Files** | File System, Google Drive, Document Loaders, VectorStoreQA |
+| **Finance** | Yahoo Finance, Polygon IO, Stripe |
+| **AI/ML ops** | DALL-E image generation, Hugging Face Hub, Nuclia |
+
+And matching prebuilt agents for common shapes:
+
+| Utility Function | Domain | Internal Pattern |
+| :--- | :--- | :--- |
+| `create_pandas_dataframe_agent()` | Analysis/plotting over DataFrames | `zero-shot-react-description` |
+| `create_csv_agent()` | Querying raw CSV files | `zero-shot-react-description` |
+| `create_sql_agent()` | Natural-language text-to-SQL | `zero-shot-react-description` |
+| `create_openai_functions_agent()` | Native OpenAI function calling | `openai-functions` |
+| `create_tool_calling_agent()` | Generic multi-provider tool calling | `structured-chat-zero-shot-react` |
+
+### Hands-on: the SQL agent
+
+Here's where the prebuilt agents get fun. The lab connects an agent to a real MySQL database — the **Chinook** digital-music store (albums, artists, invoices, customers) — and then you just… ask it questions in English.
+
+The core is three lines, once you have an LLM and a database URI:
+
+```python
+from langchain_community.utilities.sql_database import SQLDatabase
+from langchain_community.agent_toolkits import create_sql_agent
+from langchain.agents import AgentType
+
+db = SQLDatabase.from_uri("mysql+mysqlconnector://user:password@host:3306/Chinook")
+
+agent_executor = create_sql_agent(
+    llm=llm,
+    db=db,
+    verbose=True,
+    handle_parsing_errors=True,
+    agent_type=AgentType.ZERO_SHOT_REACT_DESCRIPTION
+)
+
+agent_executor.invoke("How many Album are there in the database?")
+```
+
+(That's my cleaned-up version — the lab's `sql_agent.py` also wires up a watsonx Granite model with `temperature=0.2` and reads a `--prompt` from the command line so you can run `python3 sql_agent.py --prompt "..."`.)
+
+With `verbose=True`, you can see the agent's execution trace: it inspects the schema, writes a `SELECT COUNT(*)` query against the right table, executes it, and reports **347 albums**, matching a hand-written SQL query.
+
+![SQL agent counting albums with its full thought process visible](/blog/part4-sql-agent-albums.webp)
+
+The impressive part is that it generalizes. More natural-language queries from the lab:
+
+- *"Can you left join table Artist and table Album by ArtistId? Please show me 5 Name and AlbumId in the joint table."*
+
+![The agent generating a correct multi-table JOIN from plain English](/blog/part4-sql-agent-join.webp)
+
+- *"Which country's customers spent the most by invoice?"*
+
+![The agent answering a business question across invoices and customers](/blog/part4-sql-agent-spent-most.webp)
+
+- And from the command line: `python3 sql_agent.py --prompt "How many Album are there in the database?"`
+
+![The CLI SQL agent in action](/blog/part4-sql-agent-cli.webp)
+
+The lab notes the benefits that make `create_sql_agent` more than a party trick: it answers from schema *and content*, recovers from errors (executes a query, captures the traceback, regenerates if it fails), runs multiple queries per question when needed, and only fetches schemas of relevant tables to save tokens.
+
+### Brief mention: the data science agents
+
+Two more Chapter 6 labs, same "give the model tools over data" idea:
+
+- **DataWizard** builds a collection of custom LangChain tools (list datasets, load CSV, summarize stats, train/evaluate models) plus an executor agent that manages the multi-step workflow. The architectural diagram says it all:
+
+![DataWizard's tool-belt architecture](/blog/part4-datawizard-tools.webp)
+
+- **Data Visualization Agent** turns natural-language questions into charts in a Jupyter notebook — the agent generates and runs Python plotting code against a dataset:
+
+![Chatting with your data instead of writing pandas code](/blog/part4-chat-with-data.webp)
+
+**Takeaway so far:** an agent = LLM + tools + a loop. That's it. Everything above is that sentence wearing different clothes.
+
+---
+
+## LangGraph: workflows that can loop
+
+**ELI5:** A LangChain chain is a row of dominoes: tip the first one, the rest fall in order, and the run ends. A LangGraph is more like a board game: the current state determines which square comes next, and some squares can send you *back* to a previous square. That ability to go back is what lets agents retry, reflect, and self-correct.
+
+### Core concepts
+
+There are four main building blocks:
+
+- **State:** the centralized data structure (a `TypedDict` or Pydantic model) passed between nodes. Every node reads from it and writes updates back.
+- **Nodes:** Python functions that receive the state and return updated fields. One job per node.
+- **Edges:** **normal** (`add_edge`) for deterministic transitions, **conditional** (`add_conditional_edges`) when a router function inspects state to pick the next node.
+- **Compile:** `compile()` turns the blueprint into an executable `Runnable` with `.invoke()`, `.stream()`, and async variants — plus native Mermaid diagram export (`app.get_graph().draw_mermaid()`).
+
+The LangGraph101 lab builds a login flow that shows all four in about ten lines — including my favorite detail, the **failure loop**:
+
+```python
+def router(state):
+    if state["is_authenticated"]:
+        return "success_node"
+    else:
+        return "failure_node"
+
+workflow = StateGraph(AuthState)
+workflow.add_node("InputNode", get_user_input)
+workflow.add_node("ValidateCredential", validate_credentials)
+workflow.add_node("Success", success_node)
+workflow.add_node("Failure", failure_node)
+
+workflow.add_edge("InputNode", "ValidateCredential")
+workflow.add_conditional_edges(
+    "ValidateCredential", router,
+    {"success_node": "Success", "failure_node": "Failure"}
+)
+workflow.add_edge("Success", END)
+workflow.add_edge("Failure", "InputNode")   # <-- the loop: bad login? try again
+```
+
+![The LangGraph101 authentication workflow graph](/blog/part4-langgraph-auth.webp)
+
+The full lab walkthrough adds nodes one screenshot at a time — input, validation, then wiring edges:
+
+![Adding nodes and edges step by step in the lab](/blog/part4-langgraph-nodes-edges.webp)
+
+The minimal looping-counter example from the notes makes the pattern fully explicit:
+
+```python
+from typing import TypedDict
+from langgraph.graph import StateGraph, START, END
+
+class GraphState(TypedDict):
+    count: int
+    message: str
+
+def increment(state: GraphState) -> GraphState:
+    state["count"] += 1
+    state["message"] = f"Count is now {state['count']}"
+    return state
+
+def decide_next(state: GraphState) -> str:
+    return "loop" if state["count"] < 3 else "finish"
+
+workflow = StateGraph(GraphState)
+workflow.add_node("increment_node", increment)
+workflow.add_edge(START, "increment_node")
+workflow.add_conditional_edges(
+    "increment_node", decide_next,
+    {"loop": "increment_node", "finish": END}
+)
+
+app = workflow.compile()
+print(app.invoke({"count": 0, "message": ""}))
+# {'count': 3, 'message': 'Count is now 3'}
+```
+
+Notice what this graph does that a basic linear chain cannot: it runs the *same node three times* and stops when a condition is met.
+
+### LangChain vs LangGraph in one table
+
+| Dimension | LangChain | LangGraph |
+| :--- | :--- | :--- |
+| **Execution Flow** | Linear / sequential (no cyclic loops) | Cyclic, branching, dynamic state loops |
+| **State Management** | Implicit pass-through per step | Explicit, centralized global state |
+| **Durability** | In-memory; fails if interrupted | Native checkpointing (pause, resume, retry) |
+| **Human-in-the-Loop** | Difficult to pause cleanly | First-class interrupt points |
+| **Debugging** | Linear traces via LangSmith | Time-travel debugging, state rollback |
+| **Best for** | MVPs, RAG, single-turn tasks | Multi-agent systems, long-running production flows |
+
+The notes also flag an ecosystem shift: LangChain itself moved agent architecture away from the legacy `AgentExecutor` — modern agents run on graph runtimes (`langchain.agents.create_agent`, LangGraph state graphs), so the two libraries are converging rather than competing.
+
+### Self-improving agents: the three architectures
+
+This is the heart of Chapter 7. These three patterns use the same graph primitives, but they improve results in different ways:
+
+**ELI5:** Reflection is asking, "How could this draft be better?" Reflexion adds outside evidence before revising. ReAct alternates between thinking and taking an action, then uses the result of that action to decide what to do next.
+
+| Feature | Reflection Agent | Reflexion Agent | ReAct Agent |
+| :--- | :--- | :--- | :--- |
+| **Core Idea** | Internal critique (teacher/critic prompt) | External grounding + structured critique & citations | Interleaves thinking with immediate action |
+| **Feedback Origin** | Purely internal (LLM self-review) | External (tool/search results + critic) | Environmental (tool observations) |
+| **Node Structure** | 2 nodes (`generate` → `reflect`) | 3+ nodes (`draft` → `execute_tools` → `revise`) | 2 nodes (`think` ↔ `act`) |
+| **Best For** | Creative writing, polishing, drafting | Fact-checking, QA with citations | Dynamic API interaction, multi-step problems |
+| **Limitation** | Can't fix hallucinations without new data | Higher latency, multiple tool calls per cycle | Needs strict tool-call schemas |
+
+#### Reflection: the internal critic
+
+The graph alternates between a generator and its own critic, looping until the output meets a quality target or the step budget is exhausted:
+
+```python
+def generate_node(state):
+    return {"messages": state["messages"] + [AIMessage(content="Draft content.")]}
+
+def reflect_node(state):
+    return {"messages": state["messages"] + [AIMessage(content="Critique: Needs more detail.")]}
+
+def should_continue(state):
+    # Stop after 3 generation passes
+    return END if len(state["messages"]) >= 6 else "reflect"
+
+builder = MessageGraph()
+builder.add_node("generate", generate_node)
+builder.add_node("reflect", reflect_node)
+builder.set_entry_point("generate")
+builder.add_conditional_edges("generate", should_continue, {"reflect": "reflect", END: END})
+builder.add_edge("reflect", "generate")
+graph = builder.compile()
+```
+
+The lab's diagram of this loop:
+
+![Reflection agent workflow: generate and reflect in a loop](/blog/part4-reflection-workflow.webp)
+
+And the graph-building steps as done in the notebook — first the generate node:
+
+![Adding the generate node](/blog/part4-generate-node.webp)
+
+then the reflect node:
+
+![Adding the reflect node](/blog/part4-reflect-node.webp)
+
+then the conditional edge that decides between looping and exiting:
+
+![Wiring the conditional edge](/blog/part4-cond-edge.webp)
+
+Running it shows the draft improving between passes:
+
+![Reflection output after critique passes](/blog/part4-reflection-output.webp)
+
+The course makes the limitation clear: reflection cannot fix what the model does not know. Critiquing a hallucination without new evidence may produce only a *more confident* hallucination.
+
+#### Reflexion: grounding the critique in reality
+
+Reflexion addresses that weakness by adding **external evidence**. It has three phases: draft an answer and identify what is missing, use tools to fetch facts, and revise the draft against that evidence with citations.
+
+```python
+def draft_node(state):
+    return {"messages": state["messages"] + [AIMessage(content="Paris is the capital.")]}
+
+def execute_tools_node(state):
+    evidence = "Wikipedia: Paris is the official capital of France."
+    return {"messages": state["messages"] + [SystemMessage(content=evidence)]}
+
+def revise_node(state):
+    return {"messages": state["messages"] + [AIMessage(content="Verified: Paris is France's capital [Source: Wiki].")]}
+
+def check_revision_limit(state):
+    ai_turns = sum(1 for m in state["messages"] if isinstance(m, AIMessage))
+    return "execute_tools" if ai_turns < 2 else END
+
+builder = MessageGraph()
+builder.add_node("draft", draft_node)
+builder.add_node("execute_tools", execute_tools_node)
+builder.add_node("revise", revise_node)
+builder.set_entry_point("draft")
+builder.add_edge("draft", "execute_tools")
+builder.add_edge("execute_tools", "revise")
+builder.add_conditional_edges("revise", check_revision_limit, {"execute_tools": "execute_tools", END: END})
+graph = builder.compile()
+```
+
+#### ReAct: think, act, observe, repeat
+
+ReAct interleaves reasoning and action in a tight cycle: `Thought → Action → Observation → Thought … → Final Answer`. At each step, the model decides whether it needs more information or is ready to answer. The lab first builds this flow manually (bind tools, invoke, parse `tool_calls`, execute, append a `ToolMessage`, and invoke again) and then automates it:
+
+```python
+from langgraph.prebuilt import create_react_agent
+
+agent = create_react_agent(model=llm, tools=tools)
+response = agent.invoke({"messages": [("user", "Calculate the tax for a total bill of 250.")]})
+print(response["messages"][-1].content)
+```
+
+One line replaces the whole manual loop. The exercises (a calculator tool and a news-summary tool) reinforce a practical skill: write tools with clear docstrings, because the docstring serves as the model's instruction manual.
+
+### Workflow patterns
+
+A separate lab implements the standard topologies as graphs — sequential pipelines, parallel fan-out with an aggregation node, intent-based routing, and orchestrator-worker:
+
+![LangGraph workflow patterns implemented in the lab](/blog/part4-workflow-patterns.webp)
+
+The vocabulary from the notes, condensed:
+
+- **Orchestrator–Worker:** a central controller delegates subtasks to specialized workers and aggregates results (complex pipelines, multi-step reports).
+- **Sequential:** fixed serial order ($A \to B \to C$) for deterministic multi-stage pipelines.
+- **Intent-Based Routing:** conditional dispatch to downstream branches (multi-domain assistants, triage).
+- **Parallel Execution:** fan-out concurrent work across workers, gather results (scatter-gather).
+- **Prompt Chaining:** one monolithic task split into focused sequential prompts (outline → draft → polish).
+
+### Multi-agent systems on one graph
+
+Why use multiple agents? A single agent that juggles retrieval, calculation, drafting, and critique can suffer from **context overload**, **role confusion** (switching between creative and compliance modes can make its output unstable), and difficult debugging. Decomposing the work into roles gives each agent a focused prompt, targeted tests, and independent scaling.
+
+**ELI5:** Instead of asking one person to research, calculate, write, and proofread at the same time, give each job to a specialist and pass the results between them.
+
+Communication topologies you'll actually use:
+
+- **Sequential (pipeline):** Agent $A$'s output feeds Agent $B$ ($A \to B \to C$).
+- **Parallel with aggregation:** specialists run concurrently, a compiler agent merges (scatter-gather).
+- **Interactive dialogue:** agents negotiate back-and-forth to refine ambiguous parameters.
+
+The LangGraph implementation follows a consistent shape: shared `TypedDict` state, single-responsibility nodes, and a router that reads a `next_action` key:
+
+```python
+class SalesReportState(TypedDict):
+    request: str
+    raw_data: Optional[dict]
+    processed_data: Optional[dict]
+    chart_config: Optional[dict]
+    report: Optional[str]
+    errors: List[str]
+    next_action: str
+
+def route_next_step(state: SalesReportState) -> str:
+    routing = {
+        "collect": "data_collector",
+        "process": "data_processor",
+        "visualize": "chart_generator",
+        "report": "report_generator",
+        "error": "error_handler",
+        "complete": "END"
+    }
+    return routing.get(state.get("next_action", "collect"), "END")
+```
+
+Every node sets `next_action` as it finishes; every node's conditional edges include an `error_handler` exit; the workflow compiles into a pipeline where `collector → processor → chart → report → END` is the happy path and *any* failure reroutes to a standard error node. That last bit — centralized failure handling — is the underrated part.
+
+Two protocols worth one sentence each: **MCP** (Model Context Protocol) is the open JSON-RPC standard for connecting agents to tools and context sources, and **ACP** (Agent Communication Protocol) is IBM's standardized message exchange for enterprise multi-agent interactions (which shows up again in BeeAI below).
+
+---
+
+## Flagship project: DocChat, a multi-agent RAG system
+
+This was my favorite project in the course so far. The idea is simple: upload long, complex documents (such as 86-page environmental reports or technical papers full of tables and figures), ask questions, and receive an answer from a *multi-agent RAG* system that fact-checks itself before responding.
+
+### Why single-chatbot RAG isn't enough
+
+The lab demonstrates this failure mode with concrete examples. Ask ChatGPT-4o or DeepSeek R1 a question whose answer appears on page 61 of the Google 2024 Environmental Report: DeepSeek cannot read the entire document, while ChatGPT produces a plausible-looking number without reliable support.
+
+- At the time of writing, the lab compared DocChat with plain chat mode, which was the realistic baseline. Modern chatbots have since added agentic retrieval and long-context modes, but they are moving toward the same verify-against-source pattern that DocChat implements explicitly.
+
+![ChatGPT hallucinating an answer to a document question](/blog/part4-chatgpt-hallucination.webp)
+
+![DeepSeek failing to retrieve the same answer](/blog/part4-deepseek-eval.webp)
+
+The diagnosis is that these models lack document-aware reasoning and do not verify their responses against structured sources.
+
+**ELI5:** DocChat works like a researcher with a second person checking the citations. One agent finds and drafts an answer; another checks whether the document really supports it. If the check fails, the system searches again instead of confidently returning the first draft.
+
+### The architecture
+
+DocChat composes four cooperating parts:
+
+- **Hybrid Retriever:** combines **BM25 keyword search** and **vector embeddings**, so both exact-term matches and semantic matches get through.
+- **Research Agent:** analyzes retrieved content and generates an initial draft answer.
+- **Verification Agent:** cross-checks the draft against the original document, flagging unsupported claims and contradictions.
+- **Self-Correction Mechanism:** if verification fails, the workflow *loops back* to the research step.
+
+![DocChat's multi-agent workflow graph](/blog/part4-docchat-graph.webp)
+
+The project overview shows the Gradio app and file structure around the agents:
+
+![DocChat project overview](/blog/part4-docchat-overview.webp)
+
+![DocChat's source file structure](/blog/part4-docchat-structure.webp)
+
+### The code that matters
+
+```python
+from langchain_community.vectorstores import Chroma
+from langchain_community.retrievers import BM25Retriever
+from langchain.retrievers import EnsembleRetriever
+
+def build_hybrid_retriever(self, docs):
+    # Vector half: semantic similarity
+    vector_store = Chroma.from_documents(documents=docs, embedding=self.embeddings)
+    vector_retriever = vector_store.as_retriever(search_kwargs={"k": 5})
+
+    # Keyword half: exact-term matching (BM25)
+    bm25 = BM25Retriever.from_documents(docs)
+
+    # Combine with weights
+    hybrid_retriever = EnsembleRetriever(
+        retrievers=[bm25, vector_retriever],
+        weights=[0.5, 0.5]
+    )
+    return hybrid_retriever
+```
+
+The agents themselves are straightforward: each is a class that wraps a watsonx model call with a strict prompt. The Research Agent (Llama 4 Maverick, `temperature=0.3`) answers *only* from the supplied context. The Verification Agent (Granite, `temperature=0`) must respond in a fixed report format:
+
+```text
+Supported: YES/NO
+Unsupported Claims: [item1, item2, ...]
+Contradictions: [item1, item2, ...]
+Relevant: YES/NO
+Additional Details: [...]
+```
+
+That fixed format makes the next step possible: because the report is parseable text, the graph can route on it mechanically. The orchestration should now look familiar: a `StateGraph`, conditional edges, and a loop back to research:
+
+```python
+class AgentState(TypedDict):
+    question: str
+    documents: List[Document]
+    draft_answer: str
+    verification_report: str
+    is_relevant: bool
+    retriever: EnsembleRetriever
+
+workflow = StateGraph(AgentState)
+workflow.add_node("check_relevance", self._check_relevance_step)
+workflow.add_node("research", self._research_step)
+workflow.add_node("verify", self._verification_step)
+
+workflow.set_entry_point("check_relevance")
+workflow.add_conditional_edges("check_relevance", self._decide_after_relevance_check,
+    {"relevant": "research", "irrelevant": END})
+workflow.add_edge("research", "verify")
+workflow.add_conditional_edges("verify", self._decide_next_step,
+    {"re_research": "research", "end": END})   # <-- self-correction loop
+return workflow.compile()
+```
+
+Two smart details:
+
+- A **relevance gate** up front: a tiny model call (`max_tokens=10`, `temperature=0`) classifies the question as `CAN_ANSWER` / `PARTIAL` / `NO_MATCH` against the documents — irrelevant questions get bounced with a polite message *before* any expensive research happens.
+- The verify router is a string check: `if "Supported: NO" in verification_report → re_research`. No magic, just routing on the parsed report.
+
+### Does it work?
+
+The lab tests it against both documents. DocChat correctly retrieves the Google Singapore data-center PUE figure:
+
+![DocChat correctly retrieving the Singapore facility PUE](/blog/part4-docchat-pue.webp)
+
+and the Asia-Pacific carbon-free energy percentage:
+
+![DocChat correctly retrieving the Asia Pacific CFE percentage](/blog/part4-docchat-cfe.webp)
+
+— the exact questions where ChatGPT hallucinated and DeepSeek came up empty. The finished app:
+
+![The DocChat Gradio landing page](/blog/part4-docchat-landing.webp)
+
+**Takeaway:** This is the reflection pattern from the last section applied to RAG: generate, verify against sources, and loop if the answer is unsupported. Part 2's RAG gave us retrieval; Part 4 adds the self-checking loop. That combination, often called agentic RAG, is a strong pattern for serious document QA systems.
+
+---
+
+## The framework zoo: CrewAI, AG2, and BeeAI
+
+LangGraph gives you graph *primitives* (nodes, edges, and state), and you assemble the workflow yourself. The frameworks in this chapter are more opinionated alternatives: they provide predefined topologies and higher-level concepts such as teams, conversations, and requirements. The chapter applies the same ideas in each framework.
+
+### LangGraph's own design-pattern lab
+
+First, Chapter 8's LangGraph lab implements two flagship patterns, orchestrator-worker and reflection, with structured outputs. It is the clearest reference implementation in the course:
+
+![Orchestrator-worker topology in LangGraph](/blog/part4-orchestration.webp)
+
+![Reflection topology in LangGraph](/blog/part4-reflection-topology.webp)
+
+In the orchestrator pattern, a structured-output router decides which workers to activate. The workers process subtasks and write their results back to shared state:
+
+```python
+builder = StateGraph(State)
+builder.add_node("orchestrator", orchestrator)
+builder.add_node("worker_a", worker_a)
+builder.add_node("worker_b", worker_b)
+
+builder.add_edge(START, "orchestrator")
+builder.add_conditional_edges("orchestrator", route_to_workers, {...})
+builder.add_edge("worker_a", "aggregator")
+builder.add_edge("worker_b", "aggregator")
+```
+
+The reflection pattern repeats the Chapter 7 loop, with an evaluator node and a conditional router choosing between `retry` and `END`. The important building blocks are a structured-output agent (`llm.with_structured_output(Output)` for typed handoffs), a `TypedDict` state contract, and the `START`/`END` constants.
+
+**ELI5:** Structured output is a form the model must fill in instead of a paragraph it can write freely. The form makes handoffs predictable because the next node knows which fields to expect.
+
+### CrewAI: role-based teams
+
+CrewAI models a workplace: you define **Agents** (role, goal, backstory, tools, and LLM), give them **Tasks** (description, expected output, agent, and context), and let a **Crew** coordinate them with `crew.kickoff(inputs={...})` in `Process.sequential` or `Process.hierarchical` mode.
+
+**ELI5:** A CrewAI project is like assigning jobs to a team. Agents are the employees, tasks are the work orders, and the crew is the manager that coordinates them.
+
+The "CrewAI 101" lab builds a research team this way: agents use the `SerperDevTool` web-search tool and a watsonx LLM, while tasks run sequentially. It also demonstrates dynamic `{placeholders}` in task descriptions: inputs passed to `kickoff()` flow into `{topic}`-style slots in the task description.
+
+```python
+from crewai import Agent, Task, Crew, Process
+
+meal_planner = Agent(
+    role="Meal Planner",
+    goal="Create a balanced meal plan within budget",
+    backstory="An experienced chef and nutritionist...",
+    tools=[...],
+    llm=llm,
+    verbose=True
+)
+
+meal_planning_task = Task(
+    description="Find recipes that match the skill level for {meal_name}.",
+    expected_output="A detailed meal plan with researched ingredients.",
+    agent=meal_planner,
+    output_pydantic=MealPlan,
+    output_file="meals.json"
+)
+
+meal_planner_crew = Crew(
+    agents=[meal_planner],
+    tasks=[meal_planning_task],
+    process=Process.sequential,
+    verbose=True
+)
+
+result = meal_planner_crew.kickoff(inputs={"meal_name": "Chicken Stir Fry", "servings": 4, "budget": "$25"})
+```
+
+**Structured outputs are a key feature.** Every task can declare a Pydantic model with `output_pydantic=...` (an object) or `output_json=...` (a dict). CrewAI then validates the LLM's output recursively, including nested types such as `List[Ingredient]` inside a `MealPlan`.
+
+```python
+class GroceryItem(BaseModel):
+    name: str = Field(description="Name of the grocery item")
+    quantity: str = Field(description="Quantity needed (for example, '2 lbs')")
+    estimated_price: str = Field(description="Estimated price (for example, '$3-5')")
+
+class MealPlan(BaseModel):
+    meal_name: str = Field(description="Name of the meal")
+    difficulty_level: str = Field(description="'Easy', 'Medium', 'Hard'")
+    servings: int = Field(description="Number of people it serves")
+
+class GroceryShoppingPlan(BaseModel):
+    total_budget: str = Field(description="Total planned budget")
+    meal_plans: List[MealPlan] = Field(description="Planned meals")
+    shopping_sections: List[ShoppingCategory] = Field(description="Organized by store sections")
+```
+
+After `kickoff()`, the output is accessible four ways: `result.pydantic` (attribute access like `result.pydantic.meal_name`), `result.json_dict` (key lookups), `result.raw` (unparsed text), and `result["field"]` (dict-style wrapper access).
+
+The **agent-centric versus task-centric tools** lab compares two ways to equip the same customer-service chatbot (a restaurant FAQ PDF plus web search):
+
+![Agent-centric: all tools mounted on the agent](/blog/part4-agent-centric-tools.webp)
+
+![Task-centric: each task gets exactly the tool it needs](/blog/part4-task-centric-tools.webp)
+
+```python
+# Agent-centric: the agent must CHOOSE between two tools every time
+agent_centric_agent = Agent(
+    role="The Daily Dish Inquiry Specialist",
+    goal="Accurately answer customer questions...",
+    backstory="You have access to two tools: one for the FAQ PDF, another for the web...",
+    tools=[pdf_search_tool, web_search_tool],
+    llm=llm
+)
+
+# Task-centric: tools live on tasks; agent gets none
+task_centric_agent = Agent(role="Customer Service Specialist", tools=[], ...)
+
+faq_search_task = Task(
+    description="Search the FAQ PDF for: '{customer_query}'.",
+    expected_output="The most relevant FAQ snippet, or 'not found'.",
+    tools=[pdf_search_tool],      # <-- mounted on the TASK
+    agent=task_centric_agent
+)
+
+response_drafting_task = Task(
+    description="Draft a friendly response using the FAQ findings.",
+    expected_output="The final customer-facing response.",
+    agent=task_centric_agent,
+    context=[faq_search_task]     # <-- task output feeds the next task
+)
+```
+
+The rule is that task-level tools **completely override** agent-level tools for that execution slice. Agent-centric tools are simple, but they add tool-selection latency and hallucination risk. Task-centric tools are more predictable and maintain tighter security boundaries, at the cost of requiring a decomposed pipeline.
+
+**The YAML pattern** (`@CrewBase`) is CrewAI's production answer to prompt sprawl — declarative configs in `agents.yaml`/`tasks.yaml`, Python for orchestration:
+
+![agents.yaml keeps role, goal, and backstory in config](/blog/part4-agents-yaml.webp)
+
+![tasks.yaml keeps descriptions and expected outputs in config](/blog/part4-tasks-yaml.webp)
+
+```python
+from crewai.project import CrewBase, agent, task, crew
+
+@CrewBase
+class FinancialCrew:
+    agents_config = 'config/agents.yaml'
+    tasks_config = 'config/tasks.yaml'
+
+    @agent
+    def market_analyst(self) -> Agent:
+        return Agent(config=self.agents_config['market_analyst'])
+
+    @task
+    def analysis_task(self) -> Task:
+        return Task(config=self.tasks_config['analysis_task'])
+
+    @crew
+    def crew(self) -> Crew:
+        return Crew(agents=[self.market_analyst()], tasks=[self.analysis_task()],
+                    process=Process.sequential, verbose=True)
+```
+
+![The @CrewBase class as written in the lab's leftover.py](/blog/part4-crewbase-code.webp)
+
+One gotcha the course hammers: `@CrewBase` uses `inspect` internally for path resolution, so these classes **fail inside Jupyter notebooks** — always isolate them in standalone `.py` files. (The meal-planner lab works around this by downloading a `leftover.py` module and importing it.)
+
+The meal-grocery-planner lab assembles the full crew — meal planner → shopping organizer → budget advisor — with each task's `context=[previous_task]` chaining outputs forward, then extends it with a leftover-ingredients agent from the YAML crew and a summary agent:
+
+![The meal and grocery planning workflow overview](/blog/part4-meal-planner-crew.webp)
+
+And a brief nod to **NourishBot**, the lab's bonus project: a CrewAI nutrition crew that takes a *food photo* (multimodal, tying back to Part 3), runs an ingredient-detection agent, a dietary-filtering agent, and a nutrient-analysis agent, with `output_json=` models for recipes and analysis. Same Crew triad, four agents, vision tools — proof the pattern scales to images too.
+
+### AG2 (AutoGen): conversation as orchestration
+
+AG2 (formerly AutoGen) makes a different choice: instead of graphs or teams, its core primitive is a **conversation**. The "AG2 101" tutorial covers specialized agents, built-in agent types, human-in-the-loop interaction, structured outputs with `response_format`, and best practices. Its base class is `ConversableAgent`, which can send, receive, and generate replies. Two specializations matter most: `AssistantAgent` (writes solutions and code) and `UserProxyAgent` (represents the user and can execute code through `code_execution_config`).
+
+**ELI5:** In AG2, orchestration looks like a meeting. Agents take turns speaking, and the conversation rules determine who speaks next, when a person joins, and when the meeting ends.
+
+The healthcare lab builds the consultation flow with plain `ConversableAgent`s and a group chat:
+
+```python
+from autogen import ConversableAgent, GroupChat, GroupChatManager
+
+# Agents with distinct roles
+patient_agent = ConversableAgent(
+    name="patient",
+    system_message="You describe symptoms and ask for medical help.",
+    llm_config=llm_config
+)
+diagnosis_agent = ConversableAgent(
+    name="diagnosis",
+    system_message="You analyze symptoms and provide a possible diagnosis. Summarize key points in one response.",
+    llm_config=llm_config
+)
+pharmacy_agent = ConversableAgent(
+    name="pharmacy",
+    system_message="You recommend medications based on diagnosis. Only respond once.",
+    llm_config=llm_config
+)
+consultation_agent = ConversableAgent(
+    name="consultation",
+    system_message="You determine if a doctor's visit is required. End your response with 'CONSULTATION_COMPLETE'.",
+    llm_config=llm_config
+)
+
+# Group chat with a round cap
+groupchat = GroupChat(
+    agents=[diagnosis_agent, pharmacy_agent, consultation_agent],
+    messages=[],
+    max_round=5,
+    speaker_selection_method="round_robin"
+)
+manager = GroupChatManager(name="manager", groupchat=groupchat)
+
+# The patient starts the consultation
+response = patient_agent.initiate_chat(
+    manager,
+    message=f"I am feeling {symptoms}. Can you help?",
+)
+```
+
+The exercise then reuses the same skeleton for a mental-health chatbot (emotion-analysis agent → therapy-recommendation agent, `max_round=3`). Once you understand `GroupChat`, `GroupChatManager`, and `initiate_chat`, the behavior is mainly determined by the system messages and the round and termination limits.
+
+The interaction topologies cheat list, condensed from the notes:
+
+- **Two-agent chat:** direct back-and-forth via `initiate_chat()`, capped by `max_turns`.
+- **Sequential chat:** a chain of two-agent chats via `initiate_chats()`; intermediate summaries carry forward as context.
+- **Nested chat:** an encapsulated multi-agent workflow registered with `register_nested_chats()` — the parent delegates internally and exposes only the final result.
+- **Group chat:** a shared room run by a `GroupChatManager` until a termination condition fires.
+
+Speaker selection strategies: `DefaultPattern` (rigid handoffs), `AutoPattern` (LLM picks the next speaker from context), `RoundRobinPattern` (deterministic cycles), `RandomPattern` (divergent brainstorming), `ManualPattern` (human picks). Human oversight is a session-level toggle: `human_input_mode="ALWAYS"`, `"NEVER"`, or `"TERMINATE"`. AG2 also does state and routing (`ContextVariables` shared key-value store, `OnCondition` semantic routing vs `OnContextCondition` deterministic routing, `ReplyResult` bundles returned from tools) and guardrails (`RegexGuardrail` for PII patterns, `LLMGuardrail` for policy violations).
+
+### BeeAI: production-grade agents by contract
+
+BeeAI is the IBM/Linux Foundation entrant. Its differentiator is that agent *behavior* is declared as requirements rather than implied only by prompts. The core runtime is `RequirementAgent`; the lab uses it to enforce the ReAct pattern for a cybersecurity analyst:
+
+**ELI5:** A prompt says, "Please follow these steps." A BeeAI requirement is closer to a rule checked by the runtime: "You must do this step, and you may not do that one." This makes the behavior easier to enforce and audit.
+
+```python
+from beeai_framework.agents.experimental import RequirementAgent
+from beeai_framework.memory import UnconstrainedMemory
+from beeai_framework.backend import ChatModel, ChatModelParameters
+from beeai_framework.tools.search.wikipedia import WikipediaTool
+from beeai_framework.tools.think import ThinkTool
+
+llm = ChatModel.from_name("watsonx:meta-llama/llama-4-maverick-17b-128e-instruct-fp8",
+                          ChatModelParameters(temperature=0))
+
+agent = RequirementAgent(
+    llm=llm,
+    memory=UnconstrainedMemory(),
+    tools=[ThinkTool(), WikipediaTool()],
+    requirements=[ConditionalRequirement(
+        ThinkTool, force_at_step=1, force_after=Tool,
+        consecutive_allowed=False, max_invocations=3
+    )]
+)
+
+result = await agent.run(ANALYSIS_QUERY)   # async-first
+```
+
+Read the requirements list as rules: *think at step 1, think after every tool use, never think twice in a row, and invoke thinking at most three times.* That is ReAct expressed as an enforced contract rather than a prompt that the model might ignore. Other pieces include `ChatModel.create_structure(schema=...)`, which binds Pydantic models to asynchronous responses, and `AskPermissionRequirement`, which requires human approval before designated tools run.
+
+The final lab task shows how this model extends to a **multi-agent travel planner**: a coordinator delegates to three specialists through handoff tools.
+
+```python
+# Specialized agents get enforced tool policies...
+destination_expert = RequirementAgent(
+    llm=llm, tools=[WikipediaTool(), ThinkTool()], memory=UnconstrainedMemory(),
+    instructions="You are a Destination Research Expert...",
+    requirements=[
+        ConditionalRequirement(ThinkTool, force_at_step=1, min_invocations=1, max_invocations=5, consecutive_allowed=False),
+        ConditionalRequirement(WikipediaTool, only_after=[ThinkTool], min_invocations=1, max_invocations=4, consecutive_allowed=False),
+    ]
+)
+travel_meteorologist = RequirementAgent(
+    llm=llm, tools=[OpenMeteoTool(), ThinkTool()], memory=UnconstrainedMemory(),
+    instructions="You are a Travel Meteorologist...",
+    requirements=[
+        ConditionalRequirement(ThinkTool, force_at_step=1, min_invocations=1, max_invocations=2),
+        ConditionalRequirement(OpenMeteoTool, only_after=[ThinkTool], min_invocations=1, max_invocations=1),
+    ]
+)
+
+# ...and the coordinator sees each expert as an invokable TOOL
+handoff_to_destination = HandoffTool(destination_expert, name="DestinationResearch",
+    description="Consult our Destination Research Expert for destination analysis.")
+handoff_to_weather = HandoffTool(travel_meteorologist, name="WeatherPlanning",
+    description="Consult our Travel Meteorologist for weather forecasts.")
+
+travel_coordinator = RequirementAgent(
+    llm=llm,
+    tools=[handoff_to_destination, handoff_to_weather, handoff_to_language, ThinkTool()],
+    memory=UnconstrainedMemory(),
+    instructions="You are the Travel Coordinator, the main interface for travel planning...",
+    requirements=[
+        ConditionalRequirement(ThinkTool, consecutive_allowed=False),
+        AskPermissionRequirement(["DestinationResearch", "WeatherPlanning", "LanguageCulturalGuidance"])
+    ]
+)
+
+result = await travel_coordinator.run(trip_query)   # a 2-week Japan trip question
+```
+
+The `HandoffTool` is elegant: from the coordinator's perspective, another *agent* is simply a tool with a name and description. Dynamic multi-agent routing therefore needs no separate mechanism. `AskPermissionRequirement` gates each delegation, so a human approves every specialist consultation before it runs. BeeAI is provider-agnostic (watsonx, OpenAI, Groq, and Ollama), async-first, and includes OpenTelemetry instrumentation, all of which support its enterprise focus.
+
+### Framework selection guide
+
+| Dimension | LangGraph | CrewAI | AG2 (AutoGen) | BeeAI |
+| :--- | :--- | :--- | :--- | :--- |
+| **Mental model** | Graph of nodes and edges | Role-based team with tasks | Multi-agent conversation | Agents bound by requirements |
+| **Primary focus** | Stateful workflows, routing, checkpointing | Structured teams, typed contracts | Prototyping, group dialogue, code exec | Production enterprise systems |
+| **Workflow control** | You build the graph | `Process.sequential/hierarchical` | Speaker-selection patterns | Declarative `requirements=[...]` |
+| **Human-in-the-loop** | First-class interrupt points | Task-level design | `human_input_mode` toggles | `AskPermissionRequirement` gates |
+| **Concurrency** | Parallel node fan-out | Sequential/hierarchical crews | Conversational turn-taking | Async-first (`async`/`await`) |
+| **Structured output** | `with_structured_output` | `output_pydantic` on tasks | `response_format` in `LLMConfig` | `ChatModel.create_structure` |
+
+My takeaway after using all four in the labs: choose **LangGraph** when you need custom control flow and inspectability, **CrewAI** when the problem resembles a team with typed handoffs, **AG2** when it resembles a conversation or you are prototyping quickly, and **BeeAI** when the system must meet production requirements.
+
+---
+
+## What every framework kept repeating
+
+Across three chapters, the same four warnings appear repeatedly. That repetition makes them the most important lessons:
+
+- **Loop prevention is not optional.** Every framework has a control for this: `max_turns` (AG2 two-agent chats), `max_round` (group chats), `max_invocations` (BeeAI requirements), or step budgets in LangGraph routers. A runaway agent can burn money without accomplishing anything.
+- **Determinism where it matters.** Pin `temperature=0` for structured extraction, verification, and routing nodes. (DocChat's verifier does exactly this; the research agent keeps a little `0.3` for natural phrasing.)
+- **Explicit termination signals.** String contracts such as `"DONE!"` or `"CONSULTATION_COMPLETE"` can be checked with `is_termination_msg`, as can parseable verification reports. Anything a router can read mechanically is safer than something it must interpret.
+- **Separate tool authority from tool execution.** The LLM *requests*; your code *executes*. Manual tool calling, whitelisting, validation guardrails, read-only permissions first, and human authorization for destructive operations are all the same principle wearing different hats.
+
+The fundamentals chapter also proposes a deployment ladder: grant **read-only** tool permissions initially, stage the rollout as **Proof of Concept → Pilot → Production**, and match guardrail strictness to risk. Use mandatory human approval for high-stakes failures that are hard to detect, automated assertions and schema checks for high-stakes failures that are visible, and telemetry for low-stakes work.
+
+---
+
+## Wrap-up: what agents are genuinely good and bad at
+
+**Genuinely strong at:**
+
+- Open-ended tasks where the path can't be pre-mapped: research synthesis, dynamic troubleshooting, multi-step planning.
+- Self-correction: reflection and reflexion loops measurably improve drafts and catch hallucinations when grounded in external evidence (DocChat demonstrated this on 86-page PDFs).
+- Natural-language interfaces to hard systems: SQL, charts, data science, without the user learning the underlying language.
+
+**Still weak at:**
+
+- Determinism: non-deterministic outputs are a feature and a bug — the same reason agents handle ambiguity is the reason auditors distrust them.
+- Cost: 10–100× token consumption over static workflows, plus multi-turn inter-agent chatter.
+- Cascading failures: one agent's hallucination propagating downstream is *the* multi-agent failure mode; you need fallback routes, retries, and circuit breakers by design.
+- Safety-critical deployment: anything with an unacceptable blast radius still needs a human in the loop.
+
+That closes the series. Part 1 covered GenAI foundations (prompting, models, and chains), Part 2 built RAG systems, Part 3 made the applications multimodal, and this part taught models to *act* through tools, loops, self-critique, and teamwork. If you build one thing next, use DocChat's skeleton (hybrid retrieval → research → verify → loop) with your own documents. It is the most production-oriented pattern in the course and combines the main ideas from the previous three parts.
+
+---
+
+### Cheat sheet
+
+Here is a condensed code reference for the main patterns above:
+
+| Task | Key call |
+| :--- | :--- |
+| Define a tool | `@tool` decorator with type hints + docstring (or `args_schema=PydanticModel`) |
+| Bind tools to a model | `llm.bind_tools([tool_1, tool_2])` |
+| Read suggested calls | `ai_msg.tool_calls[0]["name"] / ["args"] / ["id"]` |
+| Return a result to the model | `ToolMessage(content=..., tool_call_id=...)` appended to messages |
+| Manual execution with guardrails | `tool_map[name].invoke(tool_call)` after whitelist + validation checks |
+| SQL agent | `create_sql_agent(llm=llm, db=SQLDatabase.from_uri(uri), agent_type=AgentType.ZERO_SHOT_REACT_DESCRIPTION)` |
+| Pandas / CSV agent | `create_pandas_dataframe_agent(llm, df, allow_dangerous_code=True)` |
+| Modern agent runtime | `create_react_agent(model=llm, tools=tools)` from `langgraph.prebuilt` |
+| LangGraph state | `class State(TypedDict): ...` + `StateGraph(State)` |
+| Deterministic edge | `workflow.add_edge(START, "node")` / `add_edge("node", END)` |
+| Conditional edge | `workflow.add_conditional_edges("node", router_fn, {"key": "target"})` |
+| Reflection loop | `generate` node ↔ `reflect` node, `should_continue` router checks message count |
+| ReAct agent graph | `think` node ↔ conditional `act` node, or prebuilt `create_react_agent` |
+| Structured LLM output (LangChain) | `llm.with_structured_output(PydanticModel)` |
+| Compile & run | `app = workflow.compile()` → `app.invoke(initial_state)` |
+| CrewAI agent | `Agent(role=..., goal=..., backstory=..., tools=[...], llm=...)` |
+| CrewAI task w/ schema | `Task(description=..., expected_output=..., agent=..., output_pydantic=Model, context=[prev_task])` |
+| Run a crew | `Crew(agents=[...], tasks=[...], process=Process.sequential).kickoff(inputs={...})` |
+| Read crew output | `result.pydantic.meal_name` / `result.json_dict["meal_name"]` / `result.raw` |
+| YAML-configured crew | `@CrewBase` class + `@agent` / `@task` / `@crew` decorators (standalone `.py` only, not notebooks) |
+| AG2 two-agent chat | `agent.initiate_chat(recipient, max_turns=2, summary_method="reflection_with_llm")` |
+| AG2 group chat | `GroupChat(agents=[...], max_round=5, speaker_selection_method="round_robin")` + `GroupChatManager` |
+| AG2 termination | `is_termination_msg=lambda x: "DONE" in x["content"]`, `max_consecutive_auto_reply` |
+| AG2 human oversight | `human_input_mode="ALWAYS" / "NEVER" / "TERMINATE"` |
+| BeeAI agent | `RequirementAgent(llm=..., memory=UnconstrainedMemory(), tools=[...], requirements=[...])` |
+| BeeAI ReAct discipline | `ConditionalRequirement(ThinkTool, force_at_step=1, force_after=Tool, consecutive_allowed=False, max_invocations=3)` |
+| BeeAI HITL gate | `AskPermissionRequirement(["tool_name_1", "tool_name_2"])` |
+| BeeAI delegation | `HandoffTool(expert_agent, name=..., description=...)` mounted as a tool on the coordinator |
+| Transcription (from Part 3's meeting app) | `pipeline("automatic-speech-recognition", model="openai/whisper-medium", chunk_length_s=30)` |
+
+Common production parameters across the watsonx calls in these chapters are `temperature=0`–`0.3` (zero for verification and routing, and low for factual generation), `max_tokens` sized to the enforced structured format, and `verbose=True` during development. Console traces are one of the best ways to understand what an agent is doing.

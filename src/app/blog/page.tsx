@@ -19,9 +19,12 @@ export default function BlogPage() {
         tags: (data.tags as string[]) || [],
       };
     })
-    .sort(
-      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-    );
+    .sort((a, b) => {
+      const dateDiff =
+        new Date(b.date).getTime() - new Date(a.date).getTime();
+      if (dateDiff !== 0) return dateDiff;
+      return b.slug.localeCompare(a.slug, undefined, { numeric: true });
+    });
 
   return (
     <div
