@@ -1,0 +1,60 @@
+---
+title: "Learning Agentic AI and RAG course Part 3"
+date: "2026-10-01"
+description: "The simple version: what multimodal AI is, the one universal pattern behind every vision app, and four hands-on projects — style finder, nutrition coach, meeting assistant, and a text-to-speech storyteller."
+tags: ["Multimodal", "Computer Vision", "Whisper", "DALL-E", "TTS"]
+---
+
+This is Part 3 of my notes on the IBM RAG & Agentic AI course on Coursera (Part 2 covered RAG). The original notes were long, so here is the condensed version.
+
+> *Note: this series is my personal summary of IBM's RAG & Agentic AI course on Coursera. The course materials, labs, and the screenshots in these posts belong to IBM / Skills Network — everything here is my own beginner-friendly rewrite for learning purposes.*
+
+---
+
+## What "multimodal" means
+
+**ELI5:** most models are one-trick ponies — a chatbot reads text, an image classifier looks at pictures. A **multimodal** model handles several at once: hand it a photo *and* a question about the photo, and it deals with both together.
+
+- **Generative AI** — it *makes* things, not just sorts things.
+- **Multimodal AI** — it can see *and* hear *and* read.
+- **Both combined** — show it a photo, it writes you a story about it.
+
+## The universal pattern behind every vision app
+
+Every vision app in the chapter is the same three steps: **encode the image to base64, attach it to a chat message, ask your question.** Chat APIs speak JSON (text-only), so the image travels as a base64 string inside a `data:image/jpeg;base64,...` URI. The message just has two parts:
+
+```python
+messages = [
+    {
+        "role": "user",
+        "content": [
+            {"type": "text", "text": "Describe this photo"},
+            {"type": "image_url",
+             "image_url": {"url": "data:image/jpeg;base64," + encoded_image}},
+        ],
+    }
+]
+model.chat(messages=messages)
+```
+
+The same call covers captioning, counting objects, assessing flood damage on insurance photos, and reading nutrition labels — only the question changes.
+
+## The four apps
+
+**Style Finder** — my favorite. Upload an outfit photo; it tells you what the items are and where to buy them. Each image becomes *two* things: a base64 string for the LLM and a **ResNet50 feature vector** for similarity search. Cosine similarity finds the closest catalog match (threshold 0.8), then the multimodal model describes the items and cites prices. Conceptually it's **multimodal RAG** — Part 2 retrieved text chunks with text embeddings; this retrieves catalog rows with image embeddings.
+
+![Style Finder landing page](/blog/part3-style-finder-landing.webp)
+
+**AI Nutrition Coach** — same model, different prompt. The entire "nutritionist expertise" comes from a rigid six-part prompt format (identification → portions & calories → totals → nutrients → health evaluation → mandatory disclaimer), plus few-shot examples so the model can't misread the format. Lesson: the prompt *is* the product.
+
+**AI Meeting Assistant** — audio goes in, structured minutes come out. Three models, three jobs: **Whisper** transcribes the recording (30-second chunks), a Granite pass cleans up spoken jargon ("four zero one k" → 401(k)), and a LangChain chain writes the summary + task list. Each step is independently testable.
+
+**TTS Storyteller** — the smallest project: a topic goes in, the LLM writes a beginner-friendly story, and gTTS reads it aloud. Text in, voice out.
+
+## Where multimodal still struggles
+
+- **Multimodal hallucination** — a text model can invent facts; a vision model can describe objects that aren't even in the image.
+- **Cost** — running multiple encoders is never free.
+- **Bias and privacy** — training data skews Western, and vision/audio models ingest biometric data (faces, voices).
+
+One consistent architecture lesson: every app here is just **encode the input → build a message → retrieve context if needed → let the LLM answer** — and that scales from a caption to a full fashion search engine.

@@ -1,0 +1,64 @@
+---
+title: "Learning Agentic AI and RAG course Part 4"
+date: "2026-10-01"
+description: "The simple version: what an AI agent actually is, tool calling in LangChain, the LangGraph patterns that let agents self-correct, the DocChat project, and which framework to pick."
+tags: ["AI Agents", "LangGraph", "CrewAI", "AutoGen", "BeeAI"]
+---
+
+This is Part 4 of my notes on the IBM RAG & Agentic AI course on Coursera (Part 3 covered multimodal apps). Condensed version again — the original covers three chapters.
+
+> *Note: this series is my personal summary of IBM's RAG & Agentic AI course on Coursera. The course materials, labs, and the screenshots in these posts belong to IBM / Skills Network — everything here is my own beginner-friendly rewrite for learning purposes.*
+
+---
+
+## What an agent actually is
+
+**ELI5:** everything so far was question in → answer out. An **AI agent** is a model with *hands*: tools it can call, memory it can keep, and a loop it can run until the job is done. Instead of guessing the weather in Paris, it *calls a weather API, reads the result, then answers*.
+
+The part that surprises people: **the LLM executes nothing.** It's a lawyer who can only write letters — it writes a *request* ("run `get_weather` with `location=Paris`"), your code does the actual work, and the result goes back into the conversation. Agent = LLM + tools + a loop. That's the whole chapter.
+
+Tool calling in LangChain is the `@tool` decorator — type hints become the schema, the docstring becomes the instruction the model reads:
+
+```python
+@tool
+def get_weather(location: str) -> str:
+    """Fetch current weather for a location."""
+    return f"14°C in {location}"
+
+llm_with_tools = llm.bind_tools([get_weather])
+ai_msg = llm_with_tools.invoke("What is the weather in Paris?")
+
+if ai_msg.tool_calls:                       # the model REQUESTS
+    result = get_weather.invoke(ai_msg.tool_calls[0]["args"])   # YOUR code executes
+```
+
+## When NOT to use an agent
+
+The rule of thumb worth taping to your monitor: **start simple** (plain LLM calls), **default to workflows** (when you need consistency and audit trails), **deploy agents selectively** (only for tasks that genuinely require runtime adaptation). Agents burn 10–100× more tokens than static workflows, and safety-critical or heavily regulated systems are the wrong home for autonomy.
+
+## LangGraph: workflows that can loop
+
+A LangChain chain is a row of dominoes — it always ends. A LangGraph is a board game: the state decides which node runs next, and some edges can send you *back*. That loop is what enables everything that follows:
+
+- **Reflection** — generate a draft, have a critic node review it, loop until good. (Can't fix hallucinations it doesn't know about, though.)
+- **Reflexion** — same, but the critic is grounded in *external evidence* (tool/search results) before revising.
+- **ReAct** — think → act → observe → repeat, until the model decides it can answer. Modern agents run this on LangGraph's prebuilt `create_react_agent`.
+
+## DocChat: the flagship project
+
+My favorite of the whole course. Upload an 86-page environmental report, ask a question, and get an answer from a system that **fact-checks itself first**:
+
+![DocChat's multi-agent workflow graph](/blog/part4-docchat-graph.webp)
+
+The loop: a **hybrid retriever** (BM25 keywords + vector embeddings) fetches chunks → a Research Agent drafts an answer → a Verification Agent checks it against the document in a fixed YES/NO report format → if the report says "Supported: NO", the graph **loops back** to research. Generate, verify, re-research — that's Part 2's RAG plus Part 4's reflection loop: *agentic RAG*.
+
+## Which framework?
+
+| Framework | Mental model | Pick it when… |
+| :--- | :--- | :--- |
+| **LangGraph** | Graph of nodes/edges you assemble | You need custom control flow and inspectability |
+| **CrewAI** | Role-based team (agents, tasks, crew) | The problem looks like a team with typed handoffs |
+| **AG2 (AutoGen)** | Multi-agent conversation | The problem looks like a meeting; prototyping fast |
+| **BeeAI** | Agents bound by enforced requirements | Production systems that must meet contracts |
+
+Four lessons every framework repeated: cap the loops (`max_turns`, `max_invocations`), pin `temperature=0` for verification/routing nodes, make termination signals explicit and machine-readable, and keep tool *authority* (LLM requests) separate from tool *execution* (your code decides). If you build one thing from this series, build DocChat's skeleton with your own documents — it combines the main ideas of Parts 2–4.

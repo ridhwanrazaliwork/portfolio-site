@@ -1,0 +1,95 @@
+---
+title: "Learning Agentic AI and RAG course Part 2"
+date: "2026-10-01"
+description: "The simple version: why RAG beats pasting documents into the prompt, how text becomes searchable numbers, and the advanced retrievers worth knowing — in plain language."
+tags: ["RAG", "Vector Databases", "ChromaDB", "FAISS", "Retrievers"]
+---
+
+This is Part 2 of my notes on the IBM RAG & Agentic AI course on Coursera (Part 1 covered the LangChain basics). Part 2 was a lot of material, so this is the condensed "what actually matters" version.
+
+> *Note: this series is my personal summary of IBM's RAG & Agentic AI course on Coursera. The course materials, labs, and the screenshots in these posts belong to IBM / Skills Network — everything here is my own beginner-friendly rewrite for learning purposes.*
+
+---
+
+## Why RAG beats pasting everything into the prompt
+
+**ELI5:** modern models accept huge contexts (128k tokens), but pasting a whole book into the prompt is slow, expensive, and drowns the answer in noise. RAG instead finds the few relevant pages and hands only those to the model. It gives you three things the paste-everything approach can't: **accuracy** (answers grounded in real data), **freshness** (live data, no retraining), and **traceability** (you can cite exactly which chunk the answer came from).
+
+## How text becomes numbers
+
+Two conversions happen:
+
+- **Tokenization** cuts text into pieces and maps each to an integer ID — but those IDs carry *no meaning*. They're just seat numbers in a stadium.
+- **Embedding** is the meaningful one: a neural network turns text into a vector (a list of floats) where *similar meaning lands close together in space*. That's why "How do I reset my password?" sits near the chunk that explains password resets, even if no words overlap.
+
+## The 5-step RAG pipeline
+
+1. **Chunk** the document into small focused sections.
+2. **Tokenize** each chunk into IDs.
+3. **Embed** those IDs into vectors.
+4. **Store & search** the vectors in a vector database — the user's question becomes a vector too, and the database finds the closest matches.
+5. **Generate** — retrieved chunks + question go into one prompt, the LLM answers grounded in them.
+
+The #1 pitfall lives in step 4: **the query must use the same embedding model as the stored chunks**, or "closest" means nothing.
+
+## Picking the right similarity metric
+
+This was my favorite "silent bug" lesson — the metric choice quietly decides what search returns:
+
+- **Cosine similarity** — measures only the *angle* between vectors, ignoring length. Best for text: a 500-word blog post about Python should match a 5,000-word docs page about Python.
+- **Dot product** — angle *and* length. Best for recommenders: it boosts popular, high-confidence items.
+- **L2 (Euclidean)** — straight-line distance. Best for coordinates and physical data, and it unfairly punishes long documents.
+
+Using the wrong one is a bug that never throws an error — it just quietly returns the wrong results.
+
+## Chroma in one snippet
+
+The whole CRUD + filtered-search loop in a few lines:
+
+```python
+import chromadb
+
+client = chromadb.Client()
+collection = client.create_collection("kb_store")
+
+collection.add(
+    documents=["LangChain enables modular chains."],
+    metadatas=[{"framework": "langchain"}],
+    ids=["doc_01"],
+)
+
+# Semantic search + a metadata filter + a full-text filter
+collection.query(
+    query_texts=["what is langchain?"],
+    n_results=3,
+    where={"framework": "langchain"},
+    where_document={"$contains": "LangChain"},
+)
+```
+
+Key distinction: `get()` fetches exact documents by ID; `query()` does semantic search. And don't blindly trust top-k — combine it with filters.
+
+## HNSW: how search stays fast at scale
+
+Comparing a query against millions of vectors is a brute-force scan. HNSW speeds it up to logarithmic time with a **multi-layer highway system** through vector space: expressways for big jumps between regions, local streets for the final fine search.
+
+![HNSW graph visualization](/blog/hnsw-layers.webp)
+
+The one knob to remember: **`ef_search`** — how hard HNSW searches before giving up. Higher = more accurate but slower queries.
+
+## Advanced retrievers: beyond plain top-k
+
+Plain similarity search is only the starting point. Each advanced retriever fixes a different problem:
+
+| Retriever | The problem it solves |
+| :--- | :--- |
+| **Vector search** | Finds similar *meaning* |
+| **BM25** | Finds exact *keywords* (docs, IDs, error codes) |
+| **Document Summary** | Searches huge collections via LLM-generated summaries |
+| **Auto-Merging** | Matches small chunks, returns the larger parent section |
+| **Recursive** | Follows references/citations to other documents |
+| **Query Fusion** | Searches multiple rephrased versions of the question and merges results |
+
+The practical default is **hybrid**: combine vector + BM25 (e.g. 70/30 weighted), which covers both "similar meaning" and "exact words."
+
+The big lesson of the chapter: don't assume top-k vector search is always enough — choose the retrieval strategy based on what you're searching for, and measure retrieval quality before blaming the LLM.

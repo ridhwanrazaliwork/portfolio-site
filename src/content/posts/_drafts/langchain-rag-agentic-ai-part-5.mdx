@@ -1,0 +1,75 @@
+---
+title: "Learning Agentic AI and RAG course Part 5"
+date: "2026-10-01"
+description: "The simple version: why agents need protocols, how MCP works (the universal USB port for AI), its three transports, the security patterns, and plugging MCP tools into LangGraph agents."
+tags: ["MCP", "FastMCP", "Agents", "LangGraph", "Security"]
+---
+
+This is Part 5 — the final part of my notes on the IBM RAG & Agentic AI course on Coursera (Part 4 covered agents). Condensed version.
+
+> *Note: this series is my personal summary of IBM's RAG & Agentic AI course on Coursera. The course materials, labs, and the screenshots in these posts belong to IBM / Skills Network — everything here is my own beginner-friendly rewrite for learning purposes.*
+
+---
+
+## Why agents need protocols
+
+**ELI5:** around 2024, every framework (LangGraph, CrewAI, AutoGen, BeeAI) had its own tool format — like every appliance needing its own wall socket. Agentic protocols (MCP, A2A, ACP, ANP, AG-UI, AP2) fix this the way USB did: one plug shape everyone follows. One boundary to keep in mind: protocols are the *wire*, not the brain — they define message formats and discovery, not orchestration. That's still your LangGraph/CrewAI code's job.
+
+## MCP: the universal USB port for AI
+
+Before MCP, connecting an LLM to email, files, or a database meant a custom connector per service. With MCP, a tool exposes itself *once* in a standard format and every MCP-speaking agent can use it.
+
+Three roles: the **host** (your app) runs **clients** (one per connection), which talk to **servers** over stdio or HTTP. A server exposes three primitives:
+
+| Primitive | Who controls it | Nature |
+| :--- | :--- | :--- |
+| **Tools** | The model | Active — executes actions |
+| **Resources** | The application | Passive — read-only data by URI |
+| **Prompts** | The user | Reusable parameterized templates |
+
+## A server in one snippet
+
+With FastMCP, a tool is just a typed function with a good docstring:
+
+```python
+from fastmcp import FastMCP
+
+mcp = FastMCP("CalculatorMCPServer")
+
+@mcp.tool
+def add(a: int, b: int) -> int:
+    """Add two integers together."""
+    return a + b
+
+mcp.run(transport="http", host="127.0.0.1", port=8000)
+```
+
+The key pattern is **discovery before invocation**: the client calls `list_tools()` and reads each tool's name, description, and input schema *at runtime* — nothing is hardcoded.
+
+## The three transports
+
+- **In-memory** — pass the server object directly; for dev and tests.
+- **STDIO** — the client launches the server as a local subprocess and talks over stdin/stdout; for local tools.
+- **HTTP** — the server becomes a web service; for remote, authenticated setups.
+
+Same MCP operations on all three — only the wire changes.
+
+## The security patterns
+
+The security lab maps one-to-one onto Part 4's risk matrix:
+
+- **Roots** — a filesystem sandbox: every file-touching tool validates the path against the allowed directory (LLMs *will* eventually ask for `../../etc/passwd`).
+- **allow / ask / deny permissions** — read files auto-run, writes ask a human, deletes are denied; every decision lands in an audit log, *including denials*.
+- **Elicitation** — destructive operations pause and request typed, schema-validated approval from the user before running.
+
+## Plugging MCP into the Part 4 stack
+
+With `langchain-mcp-adapters`, an MCP server's tools become LangChain tools that plug straight into the agent we built in Part 4:
+
+```python
+tools = await load_mcp_tools(session)          # live tool catalog from the server
+agent = create_react_agent(model=llm, tools=tools)
+await agent.ainvoke({"messages": "whats 8 + 7? use tools"})
+```
+
+And `MultiServerMCPClient` aggregates several servers (local + remote) into one flat tool list with a single `get_tools()` call. The agent code didn't change from Part 4 — **the tool supply chain did**. That's the closing idea of the whole series: the agent is still the same worker; MCP just gives it a bigger, always-current toolbox.
