@@ -122,6 +122,20 @@ const proctoredCerts: Cert[] = [
 
 const courseCompletions = [
   {
+    name: "IBM Data Engineering Specialization",
+    issuer: "Coursera · IBM",
+    year: "2026",
+    icon: <Database size={16} />,
+    link: "https://www.coursera.org/account/accomplishments/specialization/GFZEE2AAXSQY",
+  },
+  {
+    name: "IBM RAG & Agentic AI Specialization",
+    issuer: "Coursera · IBM",
+    year: "2026",
+    icon: <Brain size={16} />,
+    link: "https://www.coursera.org/account/accomplishments/specialization/F866LY2VMMFQ",
+  },
+  {
     name: "Google AI Professional Certificate",
     issuer: "Coursera · Google",
     year: "2026",
