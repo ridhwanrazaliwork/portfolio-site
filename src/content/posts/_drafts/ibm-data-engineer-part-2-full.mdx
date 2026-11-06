@@ -1,0 +1,1999 @@
+---
+title: "Learning Data Engineering Part 2: Relational Databases, SQL, and Administration"
+date: "2026-11-05"
+description: "Beginner-friendly notes on relational modeling, ERDs, SQL, keys, normalization, and the day-to-day work of keeping a database healthy."
+tags: ["SQL", "Relational Databases", "PostgreSQL", "MySQL", "DBA"]
+---
+
+This is Part 2 of my notes on the **IBM Data Engineering Professional Certificate**. Part 1 covered the foundations: what data engineering is, Linux, and Python. This part is about the place most business data still lives: the relational database.
+
+It covers a lot of ground, so I merged four overlapping courses into one flow instead of repeating the same definitions four times:
+
+1. **Relational foundations** — data models, ERDs, keys, constraints, normalization, indexes, and architecture.
+2. **SQL** — querying, filtering, grouping, joining, and changing data.
+3. **Python and SQL** — connecting the two without writing unsafe SQL.
+4. **Database administration** — backups, recovery, users, security, monitoring, tuning, and automation.
+
+> *Note: this series is my personal summary of IBM's Data Engineering courses on Coursera. The course materials, labs, and screenshots in these posts belong to IBM / Skills Network — everything here is my own beginner-friendly rewrite for learning purposes.*
+
+The goal is to make relational databases feel like a system you can reason about, not a pile of syntax you memorize.
+
+---
+
+## Chapter 1 — Relational foundations
+
+### Why relational databases still matter
+
+**ELI5:** a relational database is a set of linked spreadsheets that never contradict each other.
+
+A **database** is an organized collection of data that can be stored, searched, and updated reliably. A **DBMS** is the software that manages it. An **RDBMS** is a DBMS that organizes data into **relations (tables)** and uses **SQL**.
+
+Spreadsheets are fine for small, single-user work. Databases exist because spreadsheets do not handle these well:
+
+| Need | Spreadsheet | RDBMS |
+| :--- | :--- | :--- |
+| Large volumes | Gets slow and unwieldy | Designed for scale |
+| Rules | Easy to break | Constraints enforce them |
+| Many users | Conflicts and stale copies | Concurrency control |
+| Security | File-level at best | Users, roles, privileges |
+| Backup and recovery | Manual | Built-in tools and procedures |
+| Duplication | Common | Normalization reduces it |
+
+The relational model is old, boring, and extremely effective. Most transactions, inventories, payments, and customer records still live in one.
+
+### Data, information, and models
+
+**ELI5:** data is a pile of facts; information is a fact that answers a question; a model is the map you draw before building the roads.
+
+- **Data** — raw facts such as `42`, `"Ali"`, or `2024-01-05`.
+- **Information** — data with context: "Ali is 42 years old."
+- **Knowledge** — patterns and conclusions built from information.
+
+A **data model** is an abstract representation of what data exists and how it relates. There are three levels:
+
+| Level | Question it answers | Example |
+| :--- | :--- | :--- |
+| **Conceptual** | What does the business care about? | Customer, Order, Product |
+| **Logical** | How is it structured? | Tables, keys, relationships, normal forms |
+| **Physical** | How is it stored? | Data types, indexes, partitions, file layout |
+
+```text
+Business requirements
+        │
+        ▼
+Conceptual model  ──► entities and relationships
+        │
+        ▼
+Logical model     ──► tables, keys, normalization
+        │
+        ▼
+Physical model    ──► types, indexes, storage, DDL
+```
+
+Modeling happens **before** writing `CREATE TABLE`. Fixing a bad model after the data arrives is much more expensive than fixing a diagram.
+
+A good model is accurate, complete, understandable, and stable enough to survive ordinary business changes.
+
+### ERDs and relationships
+
+**ELI5:** an ERD is a family tree for data — boxes are things, lines are how they know each other.
+
+An **entity-relationship diagram (ERD)** is the blueprint for a relational schema.
+
+- **Entity** — a thing worth storing data about: Customer, Order, Product.
+- **Attribute** — a property of an entity: name, price, date.
+- **Relationship** — how two entities connect: a customer places orders.
+- **Cardinality** — how many of each side can participate.
+
+| Cardinality | Meaning | Example | How it becomes tables |
+| :--- | :--- | :--- | :--- |
+| **1:1** | One row matches at most one row | User and profile | Foreign key on either side, usually with a unique constraint |
+| **1:N** | One row matches many rows | Customer and orders | Foreign key on the "many" side |
+| **M:N** | Many rows match many rows | Students and courses | A junction table with two foreign keys |
+
+An M:N relationship cannot be implemented directly in a relational table. It becomes a **bridge** or **junction** table:
+
+```text
+STUDENT 1 ──── * ENROLLMENT * ──── 1 COURSE
+                 │
+                 ├── student_id  (FK)
+                 ├── course_id   (FK)
+                 └── enrolled_at (attribute of the relationship)
+```
+
+Other ERD ideas worth knowing:
+
+- **Optionality / modality** — must the relationship exist? A customer may have zero orders.
+- **Weak entity** — depends on another entity for identity, such as an order line that only exists inside an order.
+- **Chen notation** — diamonds for relationships, ovals for attributes.
+- **Crow's foot** — the common modern style; the "crow's foot" marks the many side.
+
+The diagram is the blueprint. The tables come after.
+
+### Mapping entities to tables
+
+**ELI5:** turn each box into a spreadsheet, and each line into a shared ID column.
+
+| Model concept | Table concept |
+| :--- | :--- |
+| Entity | Table |
+| Attribute | Column |
+| Instance | Row |
+| 1:1 relationship | Foreign key plus unique constraint |
+| 1:N relationship | Foreign key on the many side |
+| M:N relationship | Junction table with two foreign keys |
+| Composite attribute | Split into columns (address becomes street, city, zip) |
+| Multi-valued attribute | Separate table (a customer's multiple phone numbers) |
+| Derived attribute | Usually computed, not stored (age from birthdate) |
+
+Naming conventions matter more than they look. Pick singular or plural, use `snake_case`, avoid reserved words, and be consistent. Your future self is a different person with less context.
+
+### Data types
+
+**ELI5:** data types are the shape of the box — a number box will not hold a paragraph properly.
+
+| Family | Types | Notes |
+| :--- | :--- | :--- |
+| **Integer** | `SMALLINT`, `INTEGER`, `BIGINT` | Use the smallest safe range |
+| **Exact decimal** | `DECIMAL(p,s)`, `NUMERIC(p,s)` | Use for money |
+| **Approximate decimal** | `FLOAT`, `REAL`, `DOUBLE` | Fine for science, risky for money |
+| **Character** | `CHAR(n)`, `VARCHAR(n)`, `TEXT` | `CHAR` is fixed and padded; `VARCHAR` is variable |
+| **Date/time** | `DATE`, `TIME`, `TIMESTAMP`, `DATETIME` | Store dates as dates, not strings |
+| **Boolean** | `BOOLEAN` | True or false |
+| **Binary** | `BLOB`, `BYTEA` | Images and files |
+| **Semi-structured** | `JSON`, `JSONB`, `XML` | Supported by modern engines |
+
+Rules of thumb:
+
+- Use the smallest type that safely fits.
+- Use exact decimals for money.
+- Be consistent across related columns; a key and its foreign key should have the same type.
+- Time zones matter. Store consistently, often in UTC.
+
+Wrong types cause bugs, waste storage, and slow queries. A `VARCHAR` date cannot be range-scanned efficiently the way a real `DATE` can.
+
+### The relational model vocabulary
+
+**ELI5:** a table is a grid with strict rules — every row is unique, every cell holds one value, and columns have a defined type.
+
+| Term | Meaning |
+| :--- | :--- |
+| **Relation** | Table |
+| **Tuple** | Row or record |
+| **Attribute** | Column or field |
+| **Domain** | The set of allowed values for a column |
+| **Degree** | Number of columns |
+| **Cardinality** | Number of rows |
+| **Schema** | The table definition: name, columns, types, constraints |
+| **Instance** | The actual data at a moment in time |
+
+The relational model is **set-based**: rows are unordered, and a query returns a set unless you explicitly sort it. That is why `ORDER BY` matters when order is part of the requirement.
+
+### Keys and integrity
+
+**ELI5:** a primary key is a passport number; a foreign key is that number written on a luggage tag.
+
+| Key | Definition |
+| :--- | :--- |
+| **Superkey** | Any set of columns that uniquely identifies a row |
+| **Candidate key** | A minimal superkey |
+| **Primary key (PK)** | The chosen unique identifier; cannot be null |
+| **Alternate key** | A candidate key not chosen as the primary key |
+| **Composite key** | A key made of multiple columns |
+| **Foreign key (FK)** | A column referencing another table's key |
+| **Surrogate key** | An artificial ID such as an auto-increment integer |
+| **Natural key** | A real-world identifier such as an email or ISBN |
+
+Functional dependencies and multi-valued dependencies explain *why* normalization works:
+
+- **Functional dependency (FD):** `X → Y` means knowing `X` determines exactly one `Y`. An employee ID determines an employee name.
+- **Multi-valued dependency (MVD):** `X →→ Y` means knowing `X` determines a *set* of `Y` values. An employee ID can be associated with several projects.
+- **Candidate key:** a minimal set of attributes that uniquely identifies a row.
+
+Integrity rules:
+
+| Rule | Meaning |
+| :--- | :--- |
+| **Entity integrity** | Primary key is unique and not null |
+| **Referential integrity** | A foreign key matches an existing row or is null |
+| **Domain integrity** | Values come from the allowed domain/type |
+| **User-defined integrity** | Business rules such as `price > 0` |
+
+Foreign key actions on delete or update:
+
+| Action | Behavior |
+| :--- | :--- |
+| `RESTRICT` / `NO ACTION` | Block the change if children exist |
+| `CASCADE` | Delete or update children too |
+| `SET NULL` | Clear the child reference |
+| `SET DEFAULT` | Set the child reference to a default |
+
+Index foreign key columns. Joins and cascade checks get much faster, and many databases do not create that index for you automatically.
+
+### Normalization
+
+**ELI5:** normalization is packing a suitcase properly — everything has one place, nothing is duplicated, and you do not have to unpack everything to find a sock.
+
+**Normalization** organizes tables to reduce redundancy and avoid **anomalies**:
+
+- **Insert anomaly** — you cannot add one fact without adding unrelated data.
+- **Update anomaly** — the same fact must be changed in many rows.
+- **Delete anomaly** — deleting one fact accidentally loses another.
+
+| Normal form | Rule | What it removes |
+| :--- | :--- | :--- |
+| **1NF** | Atomic values, no repeating groups, each row unique | Multi-valued cells |
+| **2NF** | 1NF plus no partial dependency on part of a composite key | Partial dependencies |
+| **3NF** | 2NF plus no transitive dependency between non-key columns | Non-key dependencies |
+| **BCNF** | A stricter 3NF for certain edge cases | Remaining anomalies |
+
+A concrete example: storing customer name and address on every order row creates redundancy. Move the customer data into a `customers` table and keep `customer_id` on `orders`.
+
+```text
+Before (redundant)
+orders(order_id, customer_name, customer_address, product, amount, ...)
+
+After (normalized)
+customers(customer_id, name, address)
+orders(order_id, customer_id, order_date, ...)
+order_items(order_id, product_id, quantity, price)
+```
+
+**Denormalization** deliberately adds redundancy for read performance. Warehouses and dashboards do this often. The rule is: **normalize for correctness, denormalize for speed, and only with a measured reason.**
+
+### Indexes and partitioning
+
+**ELI5:** an index is a book's table of contents — instead of reading every page, you jump to the right spot.
+
+An **index** is a separate structure, usually a **B-tree**, mapping column values to row locations.
+
+It speeds up:
+
+- `WHERE` filtering.
+- `JOIN` matching.
+- `ORDER BY` and `GROUP BY` in some cases.
+
+It slows down:
+
+- `INSERT`, `UPDATE`, and `DELETE`, because every write must update the index too.
+- Storage usage.
+
+| Index type | What it does |
+| :--- | :--- |
+| **Clustered** | Determines physical row order; one per table in many engines |
+| **Non-clustered** | Separate structure with pointers to rows |
+| **Unique** | Enforces uniqueness and speeds lookups |
+| **Composite** | Multiple columns; leftmost prefix matters |
+| **Covering** | Contains all columns a query needs |
+| **Partial / filtered** | Indexes only a subset of rows |
+| **Full-text** | Supports text search |
+| **Spatial** | Supports geographic data |
+
+When to index: columns used often in `WHERE`, `JOIN`, and `ORDER BY`; foreign keys; unique business keys.
+
+When not to: tiny tables, columns with very few distinct values, and heavily written tables with few reads.
+
+The **leftmost prefix rule** for composite indexes: an index on `(department_id, hire_date)` helps queries filtering on `department_id`, or on both columns, but not on `hire_date` alone.
+
+**Partitioning** splits a large table into smaller pieces by range, list, or hash. It improves manageability and can improve query performance through partition pruning. It is not a substitute for indexing; it is a storage and maintenance strategy.
+
+### Architecture and concurrency
+
+**ELI5:** the database is a restaurant — the dining room (client) talks to the waiter (server), who fetches from the kitchen (storage).
+
+- **Client-server architecture** — clients send queries; the database server processes them.
+- **Instance** — the running database software plus its memory and processes.
+- **Database** — a logical container of objects.
+- **Schema** — a namespace grouping tables, views, indexes, and functions.
+- **Storage** — where data physically lives.
+- **Memory** — caches and buffers that make queries fast.
+
+The object hierarchy is usually:
+
+```text
+Instance / server
+   └── Database
+        └── Schema
+             ├── Tables
+             ├── Views
+             ├── Indexes
+             ├── Sequences
+             ├── Functions / procedures
+             └── Triggers
+```
+
+A fully qualified name looks like `sales.orders`: schema plus table. Schemas let multiple teams or tenants share one database without name collisions.
+
+**Transactions** group statements so they succeed or fail together. The guarantees are **ACID**:
+
+| Property | Meaning |
+| :--- | :--- |
+| **Atomicity** | All or nothing |
+| **Consistency** | Valid state to valid state |
+| **Isolation** | Concurrent transactions do not corrupt each other |
+| **Durability** | Committed data survives a crash |
+
+Isolation levels trade consistency for concurrency:
+
+| Level | What it prevents (roughly) |
+| :--- | :--- |
+| `READ UNCOMMITTED` | Almost nothing; allows dirty reads |
+| `READ COMMITTED` | Dirty reads |
+| `REPEATABLE READ` | Non-repeatable reads |
+| `SERIALIZABLE` | Phantom reads, at the cost of concurrency |
+
+Concurrency anomalies have names: dirty read, non-repeatable read, and phantom read. A **deadlock** happens when two transactions wait on each other; the database kills one so the other can proceed.
+
+### Distributed and clustered databases
+
+**ELI5:** when one kitchen cannot feed everyone, you open several kitchens and coordinate them.
+
+- **Distributed database** — data spread across multiple servers or nodes.
+- **Replication** — copies of data on multiple nodes. Improves read scalability and availability, but raises consistency questions.
+- **Partitioning / sharding** — split data across nodes by a key, such as customer ID range.
+- **Clustering** — multiple servers act as one system.
+- **Failover** — another node takes over when one dies.
+- **Load balancing** — spread queries across nodes.
+
+The **CAP theorem** says a distributed system cannot guarantee all three of Consistency, Availability, and Partition tolerance at the same time. In practice, you choose what to sacrifice during a network partition.
+
+Distributed systems add complexity, cost, and network latency. Use them when the data is too big for one server, users are global, or uptime requirements are strict.
+
+### Workloads: OLTP, OLAP, and HTAP
+
+**ELI5:** some databases are built for fast daily errands; others for slow big-picture analysis.
+
+| Workload | Pattern | Optimized for | Example |
+| :--- | :--- | :--- | :--- |
+| **OLTP** | Many small reads/writes | Short transactions, high concurrency | Order entry, payments |
+| **OLAP** | Fewer large queries | Reads, aggregation, history | Monthly sales by region |
+| **HTAP** | Mixed | Both, with compromises | Some modern engines |
+
+A **data warehouse** is an OLAP store fed from OLTP systems. Operational and analytical workloads often live in separate databases because tuning for one hurts the other.
+
+### The major relational offerings
+
+**ELI5:** different car brands — all drive, but each has its own dashboard and quirks.
+
+| Database | Strengths | Typical tools |
+| :--- | :--- | :--- |
+| **IBM Db2** | Enterprise scale, reliability, IBM Cloud integration | Db2 CLI, IBM Cloud console |
+| **MySQL** | Easy start, huge community, web apps | `mysql`, phpMyAdmin, Workbench |
+| **PostgreSQL** | Standards compliance, extensibility, JSONB, PostGIS | `psql`, pgAdmin |
+
+The SQL core is largely portable. The differences show up in data types, functions, admin commands, and default behavior.
+
+| Area | MySQL | PostgreSQL | Db2 |
+| :--- | :--- | :--- | :--- |
+| Auto ID | `AUTO_INCREMENT` | `SERIAL` / identity | `GENERATED ... AS IDENTITY` |
+| Bulk load | `LOAD DATA INFILE` | `COPY` / `\copy` | `IMPORT` / `LOAD` |
+| Backup | `mysqldump` | `pg_dump` | `db2 backup` |
+| CLI | `mysql` | `psql` | `db2` |
+
+### Database design process
+
+**ELI5:** design the house before pouring concrete — changing walls later is expensive.
+
+A sane design process:
+
+1. Understand the business requirements.
+2. Identify entities (the nouns).
+3. Identify attributes (the details).
+4. Draw relationships with cardinality and optionality.
+5. Create the ERD.
+6. Map entities to tables with keys and junction tables.
+7. Normalize to reduce redundancy.
+8. Choose data types and constraints.
+9. Add indexes based on expected queries.
+10. Implement, test with realistic data, and document.
+
+Best practices:
+
+- Every table gets a primary key.
+- Enforce relationships with foreign keys.
+- Use meaningful, consistent names.
+- Use exact decimals for money and real date types for dates.
+- Normalize first; denormalize only with a measured reason.
+- Index foreign keys and frequent filters.
+- Avoid `SELECT *` in application queries.
+- Document the schema and keep the ERD current.
+- Plan for backups, security, and growth.
+
+Common mistakes:
+
+- No primary key.
+- Multiple values stored in one column.
+- Strings used for dates or numbers.
+- Missing foreign keys, producing orphan rows.
+- Over-indexing.
+- Ignoring nullability and defaults.
+
+### One-page recap
+
+**ELI5:** the whole chapter in one breath.
+
+- Data becomes information when it has context; a model is the blueprint.
+- Model at three levels: conceptual, logical, physical.
+- ERDs turn entities and relationships into tables.
+- 1:N uses a foreign key on the many side; M:N uses a junction table.
+- Keys identify and connect; constraints enforce truth.
+- Normalization removes redundancy; denormalization trades correctness for read speed.
+- Indexes speed reads and slow writes.
+- Transactions provide ACID guarantees.
+- OLTP and OLAP are different workloads.
+- Db2, MySQL, and PostgreSQL share SQL but differ in tooling.
+- Design first, then implement, test, and document.
+
+---
+
+### Hands-on lab: designing the CoffeeData schema
+
+**Scenario:** a coffee chain has data scattered across five source systems: staff, sales outlets, sales transactions, customers, and products. The job is to build one central database and a clean relational model for reporting.
+
+This was the final project for the database design course. The deliverable was an ERD, normalized tables, generated DDL, loaded data, and two exported views.
+
+#### Step 1 — Identify the entities
+
+| Entity | Source |
+| :--- | :--- |
+| `staff` | HR spreadsheet |
+| `sales_outlet` | Outlet spreadsheet |
+| `sales_transaction` | POS export |
+| `customer` | CRM export |
+| `product` | Supplier spreadsheet |
+
+#### Step 2 — Inspect the transaction data
+
+The POS export has these attributes:
+
+| Attribute | Notes |
+| :--- | :--- |
+| `transaction_id` | Identifies the sale; repeats when one sale has multiple products |
+| `transaction_date` | Sale date |
+| `transaction_time` | Sale time |
+| `sales_outlet_id` | Which store |
+| `staff_id` | Who processed the sale |
+| `customer_id` | Who bought; `0` means walk-in |
+| `product_id` | What was sold |
+| `quantity` | Units sold |
+| `price` | Unit price |
+
+The repetition in `transaction_id` is the clue that the raw table is not normalized.
+
+#### Step 3 — Draw the first tables
+
+Start with `sales_transaction` and `product`:
+
+| `sales_transaction` | Type |
+| :--- | :--- |
+| `transaction_id` | `NUMERIC(8,0)` |
+| `transaction_date` | `DATE` |
+| `transaction_time` | `TIME` |
+| `sales_outlet_id` | `NUMERIC(8,0)` |
+| `staff_id` | `NUMERIC(8,0)` |
+| `customer_id` | `NUMERIC(8,0)` |
+| `product_id` | `NUMERIC(8,0)` |
+| `quantity` | `NUMERIC(8,0)` |
+| `price` | `NUMERIC(7,2)` |
+
+| `product` | Type |
+| :--- | :--- |
+| `product_id` | `NUMERIC(8,0)` |
+| `product_category` | `VARCHAR(50)` |
+| `product_type` | `VARCHAR(50)` |
+| `product_name` | `VARCHAR(100)` |
+| `description` | `VARCHAR(500)` |
+| `price` | `NUMERIC(7,2)` |
+
+#### Step 4 — Normalize to 2NF
+
+Two problems show up immediately:
+
+1. `transaction_id` is not unique, because one transaction can contain several products. The product, quantity, and price columns depend on the product *within* the transaction, not on the transaction alone.
+2. `product_category` and `product_type` repeat across many products. They depend on the product type, not on each individual product.
+
+The fix is two new tables:
+
+| `sales_detail` | Type |
+| :--- | :--- |
+| `transaction_id` | `NUMERIC(8,0)` |
+| `product_id` | `NUMERIC(8,0)` |
+| `quantity` | `NUMERIC(8,0)` |
+| `price` | `NUMERIC(7,2)` |
+
+| `product_type` | Type |
+| :--- | :--- |
+| `product_type_id` | `NUMERIC(8,0)` |
+| `product_category` | `VARCHAR(50)` |
+| `product_type` | `VARCHAR(50)` |
+
+Then remove `product_id`, `quantity`, and `price` from `sales_transaction`, and replace the category/type columns in `product` with `product_type_id`.
+
+This is the practical meaning of 2NF: every non-key column depends on the whole key of its own table, and repeating groups live in their own table.
+
+#### Step 5 — Keys and relationships
+
+| Table | Primary key |
+| :--- | :--- |
+| `sales_transaction` | `transaction_id` |
+| `product` | `product_id` |
+| `product_type` | `product_type_id` |
+| `sales_detail` | Composite: `transaction_id` + `product_id` |
+
+Relationships:
+
+| Parent | Child | Join column | Cardinality |
+| :--- | :--- | :--- | :--- |
+| `sales_transaction` | `sales_detail` | `transaction_id` | One-to-many |
+| `product` | `sales_detail` | `product_id` | One-to-many |
+| `product_type` | `product` | `product_type_id` | One-to-many |
+
+The composite key on `sales_detail` encodes "one row per product per transaction." It also prevents duplicate detail rows.
+
+#### Step 6 — Generate and run the DDL
+
+The core DDL looks like this (the staff, outlet, and customer dimensions follow the same pattern):
+
+```sql
+CREATE TABLE product_type (
+    product_type_id  NUMERIC(8,0)  NOT NULL,
+    product_category VARCHAR(50)   NOT NULL,
+    product_type     VARCHAR(50)   NOT NULL,
+    CONSTRAINT pk_product_type PRIMARY KEY (product_type_id)
+);
+
+CREATE TABLE product (
+    product_id      NUMERIC(8,0)  NOT NULL,
+    product_type_id NUMERIC(8,0)  NOT NULL,
+    product_name    VARCHAR(100)  NOT NULL,
+    description     VARCHAR(500)  NOT NULL,
+    price           NUMERIC(7,2)  NOT NULL,
+    CONSTRAINT pk_product PRIMARY KEY (product_id),
+    CONSTRAINT fk_product_type FOREIGN KEY (product_type_id)
+        REFERENCES product_type (product_type_id)
+);
+
+CREATE TABLE sales_transaction (
+    transaction_id   NUMERIC(8,0)  NOT NULL,
+    transaction_date DATE          NOT NULL,
+    transaction_time TIME          NOT NULL,
+    sales_outlet_id  NUMERIC(8,0)  NOT NULL,
+    staff_id         NUMERIC(8,0)  NOT NULL,
+    customer_id      NUMERIC(8,0)  NOT NULL,
+    CONSTRAINT pk_sales_transaction PRIMARY KEY (transaction_id)
+);
+
+CREATE TABLE sales_detail (
+    transaction_id NUMERIC(8,0)  NOT NULL,
+    product_id     NUMERIC(8,0)  NOT NULL,
+    quantity       NUMERIC(8,0)  NOT NULL,
+    price          NUMERIC(7,2)  NOT NULL,
+    CONSTRAINT pk_sales_detail PRIMARY KEY (transaction_id, product_id),
+    CONSTRAINT fk_detail_transaction FOREIGN KEY (transaction_id)
+        REFERENCES sales_transaction (transaction_id),
+    CONSTRAINT fk_detail_product FOREIGN KEY (product_id)
+        REFERENCES product (product_id)
+);
+```
+
+Load the sample data, then verify with a row count and a quick `SELECT`:
+
+```sql
+SELECT COUNT(*) FROM sales_detail;
+SELECT * FROM sales_detail LIMIT 100;
+```
+
+#### Step 7 — Create a view and a materialized view
+
+A normal view is a saved query:
+
+```sql
+CREATE VIEW staff_locations_view AS
+SELECT staff_id,
+       first_name,
+       last_name,
+       location
+FROM staff
+WHERE "position" NOT IN ('CEO', 'CFO');
+
+SELECT * FROM staff_locations_view;
+```
+
+A materialized view stores the result physically, so it must be refreshed:
+
+```sql
+CREATE MATERIALIZED VIEW product_info_m_view AS
+SELECT p.product_name,
+       p.description,
+       pt.product_category
+FROM product p
+JOIN product_type pt
+  ON p.product_type_id = pt.product_type_id;
+
+REFRESH MATERIALIZED VIEW product_info_m_view;
+SELECT * FROM product_info_m_view;
+```
+
+The lab then exports both results as CSV and imports them into MySQL through phpMyAdmin.
+
+> **Gotcha:** the CSV exports include a header row. When importing into phpMyAdmin, enable "the first line of the file contains the table's column names," or the header becomes a data row and the column count breaks.
+
+> **Gotcha:** a materialized view returns no rows until you refresh it. That is not a bug; it is the tradeoff for storing a physical copy.
+
+> **Version note:** the exact ERD and import screens change between pgAdmin and phpMyAdmin versions. The modeling concepts and SQL stay the same.
+
+---
+
+## Chapter 2 — SQL
+
+### The SQL families
+
+**ELI5:** SQL has different toolboxes — one builds the furniture, one fills it, one controls who may enter.
+
+| Family | Commands | Purpose |
+| :--- | :--- | :--- |
+| **DDL** — Data Definition Language | `CREATE`, `ALTER`, `DROP`, `TRUNCATE`, `RENAME` | Define structure |
+| **DML** — Data Manipulation Language | `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `MERGE` | Work with data |
+| **DCL** — Data Control Language | `GRANT`, `REVOKE` | Permissions |
+| **TCL** — Transaction Control Language | `COMMIT`, `ROLLBACK`, `SAVEPOINT` | Transactions |
+
+`SELECT` is sometimes called **DQL** (Data Query Language). DDL changes are often auto-committed and hard to undo, which is why schema changes deserve more care than a test query.
+
+### SELECT and the logical order of a query
+
+**ELI5:** `SELECT` is ordering from a menu — pick the columns you want from the table.
+
+```sql
+SELECT *
+FROM books;
+
+SELECT title, author
+FROM books;
+
+SELECT title AS book_title, price
+FROM books;
+```
+
+The written order of clauses is:
+
+```sql
+SELECT columns
+FROM table
+WHERE condition
+GROUP BY columns
+HAVING condition
+ORDER BY columns
+LIMIT n;
+```
+
+The **logical execution order** is different:
+
+```text
+FROM → WHERE → GROUP BY → HAVING → SELECT → ORDER BY → LIMIT
+```
+
+That order explains why you cannot use a column alias from `SELECT` in `WHERE` in many databases, but you can use it in `ORDER BY`.
+
+### Counting, distinct values, and limits
+
+**ELI5:** count the pizzas, ignore duplicate toppings, and only take the first few slices.
+
+```sql
+SELECT COUNT(*) FROM books;
+SELECT COUNT(column_name) FROM books;
+SELECT COUNT(DISTINCT author) FROM books;
+SELECT DISTINCT country FROM authors;
+SELECT title FROM books LIMIT 10;
+```
+
+| Expression | Meaning |
+| :--- | :--- |
+| `COUNT(*)` | Number of rows, including rows with nulls |
+| `COUNT(column)` | Number of non-null values in that column |
+| `COUNT(DISTINCT column)` | Number of unique non-null values |
+| `DISTINCT` | Remove duplicate rows from the result |
+| `LIMIT n` | Return at most `n` rows |
+
+`DISTINCT` applies to the whole selected row, not just one column. `LIMIT` without `ORDER BY` gives an arbitrary set of rows; combine them when you need "top N."
+
+### Filtering rows
+
+**ELI5:** `WHERE` is the bouncer — only rows that satisfy the condition get in.
+
+```sql
+SELECT *
+FROM books
+WHERE price > 20
+  AND author = 'Ada';
+
+SELECT *
+FROM books
+WHERE title LIKE 'SQL%';
+
+SELECT *
+FROM books
+WHERE price BETWEEN 10 AND 30;
+
+SELECT *
+FROM books
+WHERE author IN ('Ada', 'Ali');
+
+SELECT *
+FROM books
+WHERE published IS NULL;
+```
+
+| Operator | Meaning |
+| :--- | :--- |
+| `=` `!=` `<>` `<` `>` `<=` `>=` | Comparison |
+| `AND`, `OR`, `NOT` | Logical combination |
+| `LIKE` | Pattern match; `%` is many characters, `_` is one |
+| `BETWEEN` | Inclusive range |
+| `IN` | Match any value in a list |
+| `IS NULL`, `IS NOT NULL` | Null checks |
+
+`NULL` is not zero and not an empty string. It means unknown or missing. Comparisons with `NULL` produce unknown, not true, so use `IS NULL`.
+
+### Sorting and grouping
+
+**ELI5:** `ORDER BY` sorts the output; `GROUP BY` puts similar rows into piles so you can summarize each pile.
+
+```sql
+SELECT title, price
+FROM books
+ORDER BY price DESC;
+
+SELECT title, price
+FROM books
+ORDER BY author ASC, price DESC;
+```
+
+```sql
+SELECT author,
+       COUNT(*) AS num_books,
+       AVG(price) AS avg_price
+FROM books
+GROUP BY author
+HAVING COUNT(*) > 2
+ORDER BY num_books DESC;
+```
+
+| Clause | Runs on | Purpose |
+| :--- | :--- | :--- |
+| `WHERE` | Individual rows | Filter before grouping |
+| `GROUP BY` | Rows | Create groups |
+| `HAVING` | Groups | Filter after grouping |
+
+You can only select grouped columns and aggregate expressions in a grouped query. If you need a non-grouped column, either group by it or use an aggregate.
+
+### Built-in functions
+
+**ELI5:** pre-made kitchen gadgets — a blender for averages, a peeler for strings, a calendar for dates.
+
+| Family | Examples |
+| :--- | :--- |
+| **Aggregate** | `SUM()`, `AVG()`, `MIN()`, `MAX()`, `COUNT()` |
+| **String** | `UPPER()`, `LOWER()`, `LENGTH()`, `SUBSTR()`, `CONCAT()`, `TRIM()`, `REPLACE()` |
+| **Numeric** | `ROUND()`, `ABS()`, `CEIL()`, `FLOOR()` |
+| **Date/time** | `CURRENT_DATE`, `CURRENT_TIMESTAMP`, `YEAR()`, `MONTH()`, `DAY()`, `DATEDIFF()` |
+
+```sql
+SELECT UPPER(title), LENGTH(title) FROM books;
+SELECT ROUND(AVG(price), 2) FROM books;
+```
+
+Aggregates ignore `NULL` except `COUNT(*)`. Date functions are the least portable part of SQL; MySQL and PostgreSQL often spell the same operation differently.
+
+### Joins
+
+**ELI5:** two lists that share an ID — match them side by side like pairing socks.
+
+```sql
+SELECT b.title, a.name
+FROM books b
+INNER JOIN authors a
+  ON b.author_id = a.author_id;
+```
+
+| Join | Returns |
+| :--- | :--- |
+| `INNER JOIN` | Only rows with matches in both tables |
+| `LEFT JOIN` | All rows from the left, plus matches |
+| `RIGHT JOIN` | All rows from the right, plus matches |
+| `FULL JOIN` | All rows from both sides |
+| `CROSS JOIN` | Every combination of rows |
+| `SELF JOIN` | A table joined to itself |
+
+A useful pattern is finding rows with no match:
+
+```sql
+SELECT a.name
+FROM authors a
+LEFT JOIN books b
+  ON a.author_id = b.author_id
+WHERE b.book_id IS NULL;
+```
+
+Join keys should be indexed. Watch for row multiplication when one side has multiple matches; a join can quietly turn 10 rows into 1,000.
+
+`NATURAL JOIN` joins on same-named columns automatically. It is fragile; prefer explicit `ON` or `USING`.
+
+### Subqueries and CTEs
+
+**ELI5:** a question inside a question — first answer the inner one, then use it in the outer one.
+
+```sql
+-- Scalar subquery
+SELECT title, price
+FROM books
+WHERE price > (SELECT AVG(price) FROM books);
+
+-- IN subquery
+SELECT title
+FROM books
+WHERE author_id IN (
+    SELECT author_id FROM authors WHERE country = 'UK'
+);
+
+-- Correlated subquery
+SELECT title
+FROM books b
+WHERE price > (
+    SELECT AVG(price) FROM books WHERE author_id = b.author_id
+);
+```
+
+| Type | Returns | Use |
+| :--- | :--- | :--- |
+| **Scalar** | One value | Compare against an aggregate |
+| **Row/column** | A list | `IN`, `ANY`, `ALL` |
+| **Correlated** | Depends on the outer row | Per-row comparison; can be slow |
+| **EXISTS** | True/false | Existence checks |
+
+A **CTE** (common table expression) often reads better than nested subqueries:
+
+```sql
+WITH uk_authors AS (
+    SELECT author_id FROM authors WHERE country = 'UK'
+)
+SELECT b.title
+FROM books b
+JOIN uk_authors u ON b.author_id = u.author_id;
+```
+
+### Creating and changing tables
+
+**ELI5:** `CREATE TABLE` draws the spreadsheet's columns and decides the rules for each.
+
+```sql
+CREATE TABLE customers (
+    customer_id INTEGER PRIMARY KEY,
+    first_name  VARCHAR(50) NOT NULL,
+    last_name   VARCHAR(50) NOT NULL,
+    email       VARCHAR(100) UNIQUE,
+    created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE orders (
+    order_id    INTEGER PRIMARY KEY,
+    customer_id INTEGER NOT NULL,
+    order_date  DATE NOT NULL,
+    amount      DECIMAL(10,2) CHECK (amount >= 0),
+    FOREIGN KEY (customer_id) REFERENCES customers(customer_id)
+);
+```
+
+| Constraint | Meaning |
+| :--- | :--- |
+| `NOT NULL` | Value required |
+| `UNIQUE` | No duplicates |
+| `PRIMARY KEY` | Unique and not null |
+| `FOREIGN KEY` | Referential integrity |
+| `CHECK` | Value must satisfy a condition |
+| `DEFAULT` | Value when none supplied |
+
+Schema changes:
+
+```sql
+ALTER TABLE customers ADD COLUMN phone VARCHAR(20);
+ALTER TABLE customers DROP COLUMN phone;
+ALTER TABLE customers ADD CONSTRAINT fk_orders
+    FOREIGN KEY (customer_id) REFERENCES customers(customer_id);
+
+TRUNCATE TABLE books;   -- remove all rows, keep the table
+DROP TABLE books;       -- remove the table and its data
+```
+
+| Command | Effect | Rollback |
+| :--- | :--- | :--- |
+| `DELETE FROM` | Remove selected rows | Usually yes |
+| `TRUNCATE TABLE` | Remove all rows quickly | Usually no |
+| `DROP TABLE` | Remove the table definition and data | Usually no |
+
+Drop child tables before parent tables, or drop the foreign key constraints first. `TRUNCATE` cannot use `WHERE`, and it often resets identity counters.
+
+### Changing data safely
+
+**ELI5:** add a card, correct a card, or remove a card — carefully.
+
+```sql
+INSERT INTO books (title, author, price)
+VALUES ('SQL Basics', 'Ada', 29.99);
+
+INSERT INTO books (title, author, price)
+VALUES ('Book A', 'Ali', 10),
+       ('Book B', 'Sara', 20);
+
+UPDATE books
+SET price = price * 1.1
+WHERE author = 'Ada';
+
+DELETE FROM books
+WHERE price < 5;
+```
+
+The safety habit that prevents most disasters: **run the `SELECT` with the same `WHERE` first**, confirm the rows, then convert it to `UPDATE` or `DELETE`.
+
+`UPDATE` without `WHERE` changes every row. `DELETE` without `WHERE` empties the table. Both are valid SQL and both are easy to run by accident.
+
+### Views, procedures, and transactions
+
+**ELI5:** a view is a saved window into the data; a stored procedure is a saved recipe; a transaction is an all-or-nothing shopping trip.
+
+```sql
+CREATE VIEW expensive_books AS
+SELECT title, price
+FROM books
+WHERE price > 50;
+
+DROP VIEW expensive_books;
+```
+
+- A **view** is a saved query that behaves like a virtual table.
+- It simplifies complex queries, hides sensitive columns, and provides a stable interface.
+- It is usually read-only.
+- A **materialized view** stores the result physically; reads are faster, but it needs refreshing.
+
+```sql
+CREATE PROCEDURE add_book(IN t VARCHAR(200), IN p DECIMAL(10,2))
+BEGIN
+    INSERT INTO books (title, price) VALUES (t, p);
+END;
+
+CALL add_book('New Book', 19.99);
+```
+
+Stored procedures keep reusable logic close to the data, reduce network traffic, and centralize permissions. They are also harder to version and test, and their syntax is database-specific.
+
+Transactions:
+
+```sql
+BEGIN;
+UPDATE accounts SET balance = balance - 100 WHERE id = 1;
+UPDATE accounts SET balance = balance + 100 WHERE id = 2;
+COMMIT;    -- or ROLLBACK;
+```
+
+`COMMIT` saves. `ROLLBACK` undoes everything since `BEGIN`. `SAVEPOINT` creates a partial rollback point. Use transactions for money transfers, multi-step inserts, and anything that must not be half-done.
+
+### Bulk loading and metadata
+
+**ELI5:** moving furniture — some tools carry it piece by piece, others load the whole truck at once.
+
+Row-by-row `INSERT` is slow for large files. Bulk utilities are much faster:
+
+| Database | Bulk load |
+| :--- | :--- |
+| PostgreSQL | `COPY table FROM 'file.csv' CSV HEADER;` or `\copy` in psql |
+| MySQL | `LOAD DATA INFILE 'file.csv' INTO TABLE ...` |
+| Db2 | `IMPORT` / `LOAD` |
+
+Before loading, check the header, delimiter, quoting, date and number formats, null handling, and encoding. After loading, verify row counts, duplicates, and key constraints.
+
+To inspect a table:
+
+| Database | Command |
+| :--- | :--- |
+| SQLite | `PRAGMA table_info(table_name);` |
+| MySQL | `DESCRIBE table_name;` |
+| PostgreSQL | `\d table_name` or `information_schema.columns` |
+| Db2 | `DESCRIBE TABLE table_name;` |
+
+### One-page recap
+
+**ELI5:** the whole chapter in one breath.
+
+- SQL is declarative: say what you want, not how to get it.
+- `SELECT` picks columns; `WHERE` filters rows; `GROUP BY` summarizes; `HAVING` filters groups; `ORDER BY` sorts; `LIMIT` caps.
+- `COUNT`, `DISTINCT`, and aggregates summarize data.
+- `INSERT`, `UPDATE`, and `DELETE` change data; always check the `WHERE`.
+- DDL builds structure; constraints keep it honest.
+- Joins combine tables; subqueries and CTEs break questions into steps.
+- Views save queries; procedures save logic; transactions keep changes atomic.
+- Bulk loaders move data faster than row-by-row inserts.
+- Metadata queries tell you what is actually in the table.
+
+### Mini cheat sheet
+
+```sql
+-- query
+SELECT col1, col2
+FROM table
+WHERE condition
+ORDER BY col1 DESC
+LIMIT 10;
+
+-- count
+SELECT COUNT(*), COUNT(DISTINCT col) FROM table;
+
+-- filter
+SELECT * FROM table
+WHERE name LIKE 'A%'
+  AND price BETWEEN 10 AND 50
+  AND category IN ('a', 'b');
+
+-- group
+SELECT author, COUNT(*) AS n, AVG(price) AS avg_price
+FROM books
+GROUP BY author
+HAVING COUNT(*) > 1
+ORDER BY n DESC;
+
+-- join
+SELECT b.title, a.name
+FROM books b
+JOIN authors a ON b.author_id = a.author_id;
+
+-- no match
+SELECT a.name
+FROM authors a
+LEFT JOIN books b ON a.author_id = b.author_id
+WHERE b.book_id IS NULL;
+
+-- subquery
+SELECT title FROM books
+WHERE price > (SELECT AVG(price) FROM books);
+
+-- structure
+CREATE TABLE t (
+    id INTEGER PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    amount DECIMAL(10,2) CHECK (amount >= 0)
+);
+ALTER TABLE t ADD COLUMN note TEXT;
+TRUNCATE TABLE t;
+DROP TABLE t;
+
+-- changes
+INSERT INTO t (id, name) VALUES (1, 'x');
+UPDATE t SET name = 'y' WHERE id = 1;
+DELETE FROM t WHERE id = 1;
+
+-- view / transaction
+CREATE VIEW v AS SELECT * FROM t WHERE amount > 50;
+BEGIN;
+UPDATE t SET amount = amount + 1 WHERE id = 1;
+COMMIT;
+
+-- python
+import sqlite3
+conn = sqlite3.connect("db.sqlite")
+cur = conn.cursor()
+cur.execute("SELECT * FROM t WHERE amount > ?", (50,))
+rows = cur.fetchall()
+conn.close()
+
+# pandas
+df = pd.read_sql_query("SELECT * FROM t", conn)
+```
+
+---
+
+## Chapter 3 — Python and SQL together
+
+**ELI5:** Python is the remote control; the database is the TV. You connect, press buttons (queries), and read what appears.
+
+Most data work is not "SQL *or* Python." It is SQL to fetch and aggregate close to the data, then Python to clean, analyze, and visualize.
+
+### The DB-API flow
+
+Python talks to relational databases through a **driver** or **connector**. The standard interface is **DB-API**:
+
+```text
+connect → cursor → execute → fetch → commit → close
+```
+
+```python
+import sqlite3
+
+conn = sqlite3.connect("books.db")
+cur = conn.cursor()
+
+cur.execute("CREATE TABLE IF NOT EXISTS books (id INTEGER, title TEXT)")
+cur.execute("INSERT INTO books VALUES (?, ?)", (1, "SQL Basics"))
+conn.commit()
+
+cur.execute("SELECT * FROM books")
+rows = cur.fetchall()
+
+conn.close()
+```
+
+| Step | Purpose |
+| :--- | :--- |
+| `connect()` | Open a connection |
+| `cursor()` | Create a cursor for statements |
+| `execute()` | Run one statement |
+| `executemany()` | Run the same statement for many rows |
+| `fetchone()` | Return the next row |
+| `fetchmany(n)` | Return up to `n` rows |
+| `fetchall()` | Return all remaining rows |
+| `commit()` | Save changes |
+| `close()` | Release the connection |
+
+### Parameterized queries
+
+Never build SQL by pasting user input into a string. Use placeholders:
+
+```python
+# SQLite
+cur.execute("SELECT * FROM books WHERE price > ?", (50,))
+
+# PostgreSQL with psycopg2
+cur.execute("SELECT * FROM books WHERE price > %s", (50,))
+
+# MySQL with mysql-connector-python
+cur.execute("SELECT * FROM books WHERE price > %s", (50,))
+```
+
+This is the difference between a query and a SQL injection. Placeholders also handle quoting and types correctly.
+
+### Context managers
+
+Use `with` so connections close even when an error occurs:
+
+```python
+with sqlite3.connect("books.db") as conn:
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM books")
+    print(cur.fetchall())
+```
+
+### Pandas integration
+
+Pandas can read a query result directly into a DataFrame and write a DataFrame back to a table:
+
+```python
+import pandas as pd
+
+conn = sqlite3.connect("books.db")
+df = pd.read_sql_query("SELECT * FROM books", conn)
+
+df["price"] = df["price"].astype(float)
+df.to_sql("clean_books", conn, if_exists="replace", index=False)
+conn.close()
+```
+
+The rule of thumb: do heavy filtering and aggregation in SQL, close to the data, and do exploratory analysis and visualization in pandas.
+
+### Other drivers
+
+| Database | Driver |
+| :--- | :--- |
+| SQLite | `sqlite3` (built in) |
+| PostgreSQL | `psycopg2` |
+| MySQL | `mysql-connector-python` or `pymysql` |
+| IBM Db2 | `ibm_db` |
+
+Db2 uses a different API shape:
+
+```python
+import ibm_db
+
+conn = ibm_db.connect(
+    "DATABASE=...;HOSTNAME=...;PORT=...;PROTOCOL=TCPIP;UID=...;PWD=...;",
+    "",
+    "",
+)
+stmt = ibm_db.exec_immediate(conn, "SELECT * FROM books")
+row = ibm_db.fetch_assoc(stmt)
+ibm_db.close(conn)
+```
+
+**SQLAlchemy** sits on top of these drivers and provides a higher-level interface that works across engines.
+
+### SQL magic in Jupyter
+
+**ELI5:** a magic wand that lets you write SQL directly in a notebook cell.
+
+```python
+%load_ext sql
+%sql sqlite:///books.db
+
+%sql SELECT * FROM books LIMIT 5;
+```
+
+```python
+%%sql
+SELECT author, COUNT(*)
+FROM books
+GROUP BY author;
+```
+
+Results can be captured into Python:
+
+```python
+result = %sql SELECT * FROM books;
+df = result.DataFrame()
+```
+
+SQL magic is great for exploration. It is not a production interface, and connection strings still contain credentials, so do not commit notebooks with secrets.
+
+### Best practices
+
+- Close connections, preferably with `with`.
+- Use parameterized queries.
+- Handle exceptions and log failures.
+- Avoid `SELECT *` in application code.
+- Never hard-code credentials; use environment variables or a secret manager.
+- Commit writes explicitly.
+- Do not fetch a million rows into pandas if SQL can aggregate first.
+
+---
+
+## Chapter 4 — Database administration
+
+**ELI5:** the DBA is the building superintendent — fixes leaks, controls keys, keeps the generators ready, and knows who is allowed in.
+
+A **database administrator (DBA)** is responsible for the availability, integrity, security, and performance of databases.
+
+Core responsibilities:
+
+- Install and configure database software.
+- Create databases, schemas, tables, and users.
+- Manage storage and capacity.
+- Back up and restore; plan for disaster recovery.
+- Manage authentication, authorization, encryption, and auditing.
+- Monitor and tune performance.
+- Troubleshoot incidents.
+- Automate maintenance jobs.
+- Patch, upgrade, document, and eventually decommission.
+
+The mindset when something is on fire: **availability, integrity, security, performance**, roughly in that order.
+
+### The database lifecycle
+
+**ELI5:** a database has a lifespan — design it, build it, run it, tune it, protect it, and eventually retire it.
+
+| Stage | Main work |
+| :--- | :--- |
+| **Requirements and design** | Workload, data model, SLAs, compliance |
+| **Installation and configuration** | Version, parameters, storage layout |
+| **Provisioning** | Databases, schemas, objects, users |
+| **Operations** | Backups, monitoring, patching, capacity |
+| **Performance management** | Queries, indexes, memory |
+| **Security management** | Access reviews, encryption, auditing |
+| **Incident management** | Troubleshoot, recover, postmortem |
+| **Change management** | Schema changes, upgrades, migrations |
+| **Decommissioning** | Archive data, revoke access, retire |
+
+Documentation belongs in every stage: runbooks, diagrams, recovery plans, and ownership.
+
+### Security, ethics, and compliance
+
+**ELI5:** data is other people's property — handle it lawfully, privately, and carefully.
+
+The security triad is **CIA**:
+
+| Property | Meaning |
+| :--- | :--- |
+| **Confidentiality** | Only authorized people can see it |
+| **Integrity** | It has not been altered improperly |
+| **Availability** | It is there when authorized people need it |
+
+- **Authentication** — who are you?
+- **Authorization** — what may you do?
+- **Least privilege** — grant the minimum access needed.
+- **Separation of duties** — admins, auditors, and application accounts are different roles.
+
+Privacy and compliance laws include GDPR (EU), HIPAA (US health), CCPA/CPRA (California), and PCI DSS (payments). The recurring requirements are consent, purpose limitation, retention limits, the right to erasure, and audit trails.
+
+Data classification (public, internal, confidential, restricted) helps decide who gets access and how long data is kept.
+
+DBA-specific risks:
+
+- Over-broad privileges.
+- Unencrypted backups.
+- Shared credentials.
+- Unlogged administrative actions.
+- Test data copied from production without masking.
+
+Security is a process, not a one-time setting.
+
+### Storage and engines
+
+**ELI5:** data lives on disk in big filing cabinets; the DBMS caches hot pages in memory.
+
+| Concept | Meaning |
+| :--- | :--- |
+| **Page / block** | Smallest unit of disk I/O, often 4–16 KB |
+| **Extent** | A group of pages |
+| **Tablespace** | Logical storage container mapped to data files |
+| **Data file** | Physical file on disk |
+| **Buffer pool / cache** | Memory holding hot pages |
+| **Transaction log / WAL** | Write-ahead log for durability and recovery |
+| **Undo** | Supports rollback and MVCC |
+| **Temp storage** | Sorts, joins, temporary tables |
+
+Best practices: separate data, logs, and backups physically when possible; monitor growth and free space; size the transaction log for recovery needs; use storage with appropriate durability.
+
+MySQL's storage engine matters because it changes what the table can do:
+
+| Engine | Transactions | Foreign keys | Locking | Use |
+| :--- | :--- | :--- | :--- | :--- |
+| **InnoDB** | Yes | Yes | Row-level | Default; OLTP and general use |
+| **MyISAM** | No | No | Table-level | Legacy read-heavy tables |
+| **MEMORY** | No | No | Table-level | Temporary data, lost on restart |
+| **ARCHIVE** | No | No | — | Compressed archival |
+| **CSV** | No | No | — | Data exchange |
+
+InnoDB is the right default for most workloads. It supports crash recovery, MVCC, row-level locking, a clustered primary key, and redo/undo logs. MyISAM is legacy: no transactions and no crash safety.
+
+### Backup and recovery
+
+**ELI5:** backups are copies of the building's contents; restore is rebuilding after a fire.
+
+Two objectives drive the policy:
+
+| Objective | Question |
+| :--- | :--- |
+| **RPO** — Recovery Point Objective | How much data can we afford to lose, in time? |
+| **RTO** — Recovery Time Objective | How fast must we be back? |
+
+Backup types:
+
+| Type | What it contains |
+| :--- | :--- |
+| **Full** | Everything |
+| **Incremental** | Changes since the last backup of any type |
+| **Differential** | Changes since the last full backup |
+| **Transaction log / WAL** | Changes that enable point-in-time recovery |
+| **Snapshot** | A storage-level copy |
+
+A good policy includes a schedule, retention, encryption, offsite copies, and **tested restores**. The **3-2-1 rule** is a useful baseline: three copies, two media types, one offsite.
+
+A backup is only proven when you have restored it.
+
+#### PostgreSQL
+
+```bash
+# Logical backup in custom format
+pg_dump -Fc -d shop -f shop.dump
+
+# Restore into a new database
+pg_restore -d shop_new shop.dump
+
+# Plain SQL
+pg_dump -d shop > shop.sql
+psql -d shop_new -f shop.sql
+```
+
+Physical backup uses `pg_basebackup` plus WAL archiving. Point-in-time recovery restores a base backup, configures `restore_command`, and recovers to a target time. WAL archiving must be enabled **before** the disaster.
+
+#### MySQL
+
+```bash
+mysqldump --single-transaction --routines --triggers shop > shop.sql
+mysql shop < shop.sql
+```
+
+`--single-transaction` gives a consistent InnoDB snapshot without locking the whole database. Binary logs enable point-in-time recovery: restore the dump, then replay the binary logs with `mysqlbinlog`.
+
+#### Db2
+
+```bash
+db2 backup db sample to /backup
+db2 restore db sample from /backup
+db2 rollforward db sample to end of logs and stop
+```
+
+`db2ckbkp` verifies a backup image. Archived logs enable rollforward recovery.
+
+### Point-in-time recovery
+
+**ELI5:** the log is a diary of every change — replay it to rebuild the exact moment before a mistake.
+
+The steps are conceptually the same across databases:
+
+1. Restore the last full or base backup.
+2. Replay archived logs up to the target timestamp.
+3. Verify data and constraints.
+4. Reopen for business.
+
+The common failure is discovering that log archiving was never enabled. At that point, point-in-time recovery is impossible.
+
+### Users, roles, and privileges
+
+**ELI5:** users are people, roles are job titles, privileges are the keys each title gets.
+
+- **User** — an account that authenticates.
+- **Role** — a named bundle of privileges.
+- **Privilege** — permission to perform an action.
+- **Object privileges** — on tables and views.
+- **System privileges** — server-wide.
+
+#### PostgreSQL
+
+```sql
+CREATE ROLE analyst LOGIN PASSWORD '...';
+GRANT CONNECT ON DATABASE shop TO analyst;
+GRANT USAGE ON SCHEMA public TO analyst;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO analyst;
+```
+
+Roles can be group roles (`NOLOGIN`) and inherited. `ALTER DEFAULT PRIVILEGES` controls future tables. Host-based authentication lives in `pg_hba.conf`.
+
+#### MySQL
+
+```sql
+CREATE USER 'app'@'%' IDENTIFIED BY '...';
+GRANT SELECT, INSERT, UPDATE ON shop.* TO 'app'@'%';
+REVOKE INSERT ON shop.* FROM 'app'@'%';
+SHOW GRANTS FOR 'app'@'%';
+DROP USER 'app'@'%';
+```
+
+The host part matters: `'app'@'localhost'` and `'app'@'%'` are different accounts.
+
+#### Db2
+
+```sql
+GRANT CONNECT ON DATABASE TO USER app;
+GRANT SELECT ON TABLE shop.orders TO USER app;
+GRANT DBADM ON DATABASE TO USER admin;
+```
+
+Db2 has authorities such as SYSADM, SYSCTRL, SYSMAINT, DBADM, and SECADM.
+
+The common rule everywhere: **grant the minimum, review regularly, and remove access when it is no longer needed.**
+
+### Auditing and encryption
+
+**ELI5:** auditing is the security camera; encryption is the locked safe.
+
+**Auditing** records who did what, when, and from where. Useful events include logins, privilege changes, DDL, and access to sensitive data.
+
+| Database | Auditing options |
+| :--- | :--- |
+| MySQL | Audit plugin (Enterprise), general log (carefully) |
+| PostgreSQL | `pgaudit`, `log_statement` |
+| Db2 | Audit facility with categories |
+
+**Encryption in transit** protects client-server traffic with TLS. **Encryption at rest** protects data files and backups.
+
+| Database | At-rest options |
+| :--- | :--- |
+| MySQL | InnoDB tablespace encryption |
+| PostgreSQL | Filesystem/disk encryption, column-level `pgcrypto` |
+| Db2 | Native encryption |
+
+Key management matters as much as the encryption itself. Rotate keys, keep them separate from the data, and restrict access. Encrypt backups too; an unencrypted backup is a leak waiting to happen.
+
+**Masking** and **tokenization** protect sensitive values in non-production environments.
+
+### Monitoring
+
+**ELI5:** monitoring is the dashboard in the engine room — watch temperature, pressure, and traffic.
+
+Metrics worth watching:
+
+- Connections and sessions, active versus idle.
+- CPU, memory, disk I/O, IOPS, and latency.
+- Buffer/cache hit ratio.
+- Query throughput and latency.
+- Slow queries.
+- Locks, waits, and deadlocks.
+- Replication lag.
+- Disk space and growth.
+- Errors and failed logins.
+
+Know what normal looks like before you need to detect abnormal. Baselines make alerts meaningful.
+
+| Database | Useful views and commands |
+| :--- | :--- |
+| MySQL | `SHOW STATUS`, `SHOW PROCESSLIST`, `performance_schema`, `sys`, slow query log |
+| PostgreSQL | `pg_stat_activity`, `pg_stat_statements`, `pg_locks`, `pg_stat_replication` |
+| Db2 | `db2pd`, `db2top`, `MON_GET_*`, `db2diag.log` |
+
+```sql
+-- PostgreSQL: active queries
+SELECT pid, usename, state, query
+FROM pg_stat_activity
+WHERE state <> 'idle';
+```
+
+Monitoring has layers: OS, DBMS, query, and application. A database that looks healthy can still be slow because the application is holding a transaction open.
+
+### Tuning the database and the query
+
+**ELI5:** tuning the database is adjusting the engine; tuning a query is finding a faster route.
+
+Database-level tuning:
+
+- Size the buffer pool/cache appropriately.
+- Limit and pool connections.
+- Separate data and log I/O.
+- Tune checkpoint frequency against recovery time.
+- Keep statistics fresh (`ANALYZE`, `RUNSTATS`).
+- Use partitioning for large tables.
+- Compress or archive cold data.
+- Test configuration changes and roll back if they do not help.
+
+Query-level tuning:
+
+- Find slow queries with the slow query log or `pg_stat_statements`.
+- Read the plan with `EXPLAIN` or `EXPLAIN ANALYZE`.
+- Look for sequential scans where an index should be used, bad join strategies, and large estimated-versus-actual row counts.
+- Add or adjust indexes.
+- Avoid functions on indexed columns when they prevent index use.
+- Select only the columns you need.
+- Filter early, before joins.
+- Rewrite subqueries as joins, or joins as subqueries, when it helps.
+- Update statistics.
+- Measure before and after; do not guess.
+
+```sql
+EXPLAIN ANALYZE
+SELECT c.name, SUM(o.total)
+FROM customers c
+JOIN orders o
+  ON o.customer_id = c.id
+WHERE o.order_date >= DATE '2024-01-01'
+GROUP BY c.name;
+```
+
+**Sargability** is the property that lets a predicate use an index. `WHERE order_date >= DATE '2024-01-01'` is sargable. `WHERE YEAR(order_date) = 2024` often is not, because the function hides the column from the index.
+
+Too many indexes slow writes and waste space. Unused indexes should be found and removed. Index bloat should be rebuilt or reorganized when needed.
+
+### Troubleshooting
+
+**ELI5:** when the database is sick, check the symptoms, then read the logs — the answer is usually there.
+
+| Symptom | Likely causes | First checks |
+| :--- | :--- | :--- |
+| Cannot connect | Service down, wrong host/port, auth, firewall, max connections | Service status, port, logs, grants |
+| Slow queries | Missing index, bad plan, locks, stale statistics | `EXPLAIN`, slow log, locks |
+| Deadlocks | Conflicting lock order | Deadlock logs, transaction order |
+| Disk full | Data/log growth, backups, temp files | `df -h`, largest files, retention |
+| High CPU | Bad query, too many connections, vacuum | `top`, active queries, slow log |
+| Replication lag | Network, heavy writes, single-threaded apply | Lag metrics, logs |
+| Corruption | Hardware, crash, bugs | Checksums, restore from backup |
+| Auth failures | Wrong credentials, expired user, host rules | Error codes, grants, config |
+| Unexpected restarts | Out-of-memory killer, crashes | OS logs, database error log |
+
+The method: reproduce, isolate, check logs and metrics, fix, verify, and document. A postmortem should capture root cause, timeline, and preventive action.
+
+### Automation
+
+**ELI5:** automation is a robot assistant — it runs the boring jobs on schedule, but you still check its work.
+
+Good candidates for automation:
+
+- Backups and restore tests.
+- Health checks and alerts.
+- Index and statistics maintenance.
+- Log rotation and cleanup.
+- User and privilege reports.
+- Capacity reports.
+- Data exports.
+
+```bash
+#!/bin/bash
+set -euo pipefail
+
+BACKUP_DIR="/backup/mysql"
+DATE=$(date +%F)
+
+mkdir -p "$BACKUP_DIR"
+mysqldump --single-transaction shop | gzip > "$BACKUP_DIR/shop_$DATE.sql.gz"
+
+# Keep seven days
+find "$BACKUP_DIR" -name "shop_*.sql.gz" -mtime +7 -delete
+
+echo "Backup completed: $DATE"
+```
+
+```bash
+0 2 * * * /usr/local/bin/backup.sh >> /var/log/backup.log 2>&1
+```
+
+Store credentials in protected files such as `~/.my.cnf` or `~/.pgpass`, or in a secret manager. Never in the script itself. Make reruns safe, check exit codes, and send an alert when a job fails.
+
+A silently failing backup is worse than no backup, because it creates false confidence.
+
+### One-page recap
+
+**ELI5:** the whole chapter in one breath.
+
+- A DBA owns availability, integrity, security, and performance.
+- The lifecycle runs from design to decommissioning.
+- Security is authentication, authorization, least privilege, auditing, encryption, and compliance.
+- Storage is pages, extents, tablespaces, data files, logs, and the buffer pool.
+- InnoDB is the default MySQL engine; MyISAM is legacy.
+- Backups need an RPO, an RTO, retention, encryption, and tested restores.
+- Point-in-time recovery needs a base backup plus archived logs.
+- Users authenticate; roles bundle privileges; least privilege wins.
+- Monitoring establishes a baseline before there is a problem.
+- Tune the database and the query, and measure before and after.
+- Troubleshooting starts with logs and metrics.
+- Automate the boring work and verify that it actually ran.
+
+### Mini cheat sheet
+
+```bash
+# PostgreSQL
+psql -U postgres -d shop
+pg_dump -Fc -d shop -f shop.dump
+pg_restore -d shop_new shop.dump
+
+# MySQL
+mysql -u root -p shop
+mysqldump --single-transaction shop > shop.sql
+mysql shop < shop.sql
+
+# Db2
+db2 backup db sample to /backup
+db2 restore db sample from /backup
+```
+
+```sql
+-- PostgreSQL users and privileges
+CREATE ROLE analyst LOGIN PASSWORD '...';
+GRANT CONNECT ON DATABASE shop TO analyst;
+GRANT USAGE ON SCHEMA public TO analyst;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO analyst;
+
+-- MySQL users and privileges
+CREATE USER 'app'@'%' IDENTIFIED BY '...';
+GRANT SELECT, INSERT ON shop.* TO 'app'@'%';
+SHOW GRANTS FOR 'app'@'%';
+
+-- inspect
+SHOW ENGINES;                       -- MySQL
+SHOW PROCESSLIST;                   -- MySQL
+SELECT * FROM pg_stat_activity;     -- PostgreSQL
+EXPLAIN ANALYZE SELECT ...;         -- PostgreSQL
+
+-- size
+SELECT table_name,
+       table_rows,
+       ROUND(data_length / 1024 / 1024, 2) AS data_size_mb
+FROM information_schema.tables
+WHERE table_schema = 'billing';
+```
+
+---
+
+### Hands-on lab: PostgreSQL administration
+
+**Scenario:** act as the database administrator for a PostgreSQL server. Inspect configuration, create a backup operator, grant read-only access through a role, and take a backup.
+
+This was Part 1 of the database administration final assignment.
+
+#### Step 1 — Inspect the server configuration
+
+```sql
+SHOW max_connections;
+SHOW config_file;
+```
+
+`SHOW max_connections;` returns the connection limit for the running server. `SHOW config_file;` returns the path to `postgresql.conf`. Open that file and find the matching line:
+
+```text
+max_connections = 100
+```
+
+The point of the exercise is to connect the running value to the configuration file that produced it. Changing the file does not change the running value until the server reloads or restarts.
+
+#### Step 2 — Create a user and a role
+
+```sql
+CREATE USER backup_operator;
+CREATE ROLE backup;
+```
+
+A user can log in. A role is a bundle of privileges that can be granted to users or other roles. In PostgreSQL the distinction is mostly about login capability and inheritance.
+
+#### Step 3 — Grant privileges to the role
+
+```sql
+GRANT CONNECT ON DATABASE tolldata TO backup;
+GRANT SELECT ON ALL TABLES IN SCHEMA toll TO backup;
+```
+
+The first grant lets the role connect to the database. The second gives read-only access to every table in the `toll` schema.
+
+#### Step 4 — Grant the role to the user
+
+```sql
+GRANT backup TO backup_operator;
+```
+
+Now `backup_operator` inherits the role's privileges. This is easier to audit than granting permissions to individual users one by one.
+
+#### Step 5 — Back up the database
+
+In pgAdmin:
+
+1. Open the `tolldata` database.
+2. Right-click and choose **Backup**.
+3. Set the filename to `tolldatabackup.tar`.
+4. Choose **Tar** as the format.
+5. Run the backup and confirm that it completed.
+
+The important part is not the click path. It is the idea: a logical backup captures the database in a restorable form. Verify that the file exists and, ideally, restore it somewhere to prove it works.
+
+> **Gotcha:** `SHOW max_connections;` shows the running value, which may differ from the value in `postgresql.conf` if the server has not reloaded. Check both when a setting seems ignored.
+
+> **Gotcha:** roles are cluster-wide, not database-specific. A role created while connected to one database is still visible from another.
+
+> **Version note:** pgAdmin's backup dialog labels and storage browser change between versions. The concepts (filename, format, restore) do not.
+
+---
+
+### Hands-on lab: MySQL and SQLite administration
+
+**Scenario:** restore a billing database, measure table size, compare a query before and after an index, inspect storage engines, then repeat the indexing exercise in SQLite. This was Parts 2 and 3 of the same assignment.
+
+#### Part A — MySQL: restore and inspect
+
+Restore the provided dump:
+
+```bash
+mysql -u root -p < billingdata.sql
+```
+
+Then open the client:
+
+```bash
+mysql -u root -p
+```
+
+```sql
+SHOW TABLES IN billing;
+```
+
+The dump creates the `billing` database and its tables, including `billdata`.
+
+Find the table size and row estimate:
+
+```sql
+SELECT table_name,
+       table_rows,
+       ROUND(data_length / 1024 / 1024, 2) AS data_size_mb
+FROM information_schema.tables
+WHERE table_schema = 'billing'
+  AND table_name = 'billdata';
+```
+
+`table_rows` is an estimate for InnoDB, not an exact count. `data_length` is the data size in bytes. The exact numbers are less important than knowing where to look.
+
+#### Part B — MySQL: baseline query versus index
+
+Run a query that filters on a non-indexed column:
+
+```sql
+USE billing;
+
+SELECT *
+FROM billdata
+WHERE billedamount > 19999;
+```
+
+Note the `rows in set (x.xx sec)` line at the end. Then create an index:
+
+```sql
+CREATE INDEX idx_billedamount
+ON billdata (billedamount);
+```
+
+Run the same query again and compare the time. The row count should be identical; the execution time should drop, especially on a large table.
+
+```sql
+SELECT *
+FROM billdata
+WHERE billedamount > 19999;
+```
+
+This is the simplest useful performance experiment in the course: same query, same data, one index.
+
+#### Part C — MySQL: storage engines
+
+```sql
+SHOW ENGINES;
+```
+
+Look for `InnoDB` and `MyISAM`. InnoDB supports transactions and foreign keys; MyISAM does not.
+
+Find the engine for the table:
+
+```sql
+SELECT ENGINE
+FROM information_schema.tables
+WHERE table_schema = 'billing'
+  AND table_name = 'billdata';
+```
+
+The expected result is `InnoDB`.
+
+#### Part D — SQLite: import, view, and index
+
+SQLite is a file-based database, so the setup is minimal:
+
+```bash
+sqlite3 billing.db
+```
+
+```sql
+.mode csv
+.import --skip 1 billing.csv billing
+```
+
+The `--skip 1` option skips the CSV header. Check the schema and a few rows:
+
+```sql
+.schema billing
+SELECT * FROM billing LIMIT 5;
+```
+
+Count the rows:
+
+```sql
+SELECT COUNT(*) FROM billing;
+```
+
+Create a view:
+
+```sql
+CREATE VIEW basicbilldetails AS
+SELECT customerid, month, billedamount
+FROM billing;
+
+SELECT * FROM basicbilldetails LIMIT 5;
+```
+
+For the timing exercise, SQLite can print timestamps around the query:
+
+```sql
+SELECT strftime('%Y-%m-%d %H:%M:%f', 'now');
+
+SELECT *
+FROM billing
+WHERE billedamount = 19929;
+
+SELECT strftime('%Y-%m-%d %H:%M:%f', 'now');
+```
+
+Then create an index and repeat:
+
+```sql
+CREATE INDEX billingamount
+ON billing (billedamount);
+```
+
+Run the timestamped query again. If the result set is tiny, the difference may be too small to see at millisecond precision. The lesson is still the same: indexes help when the filter is selective and the table is large.
+
+> **Gotcha:** the CSV header can become part of the table if you forget `--skip 1`, and quoted column names may need to be referenced exactly as shown by `.schema`.
+
+> **Gotcha:** query timing is noisy. The query cache, buffer pool, and other sessions can change the result. Run each query a few times and compare the trend, not one lucky number.
+
+> **Version note:** `SHOW ENGINES` output and information_schema column names vary slightly by MySQL version.
+
+---
+
+### Hands-on lab: an OLTP table in MySQL
+
+**Scenario:** create a small OLTP table, load a flat file, index a timestamp column, and produce a repeatable dump with a shell script.
+
+This was the OLTP capstone lab. It is short, but it touches the full lifecycle: schema, load, index, verify, and back up.
+
+#### Step 1 — Create the database and table
+
+```sql
+CREATE DATABASE sales;
+USE sales;
+
+CREATE TABLE sales_data (
+    product_id  INT,
+    customer_id INT,
+    price       DECIMAL(8,2),
+    quantity    INT,
+    timestamp   DATETIME
+);
+```
+
+The column names and order must match the source file. This table is deliberately simple; the exercise is about loading and operating it, not about normalization.
+
+#### Step 2 — Load the data
+
+The CSV has no header row and contains 2,605 records.
+
+```bash
+mysql --local-infile=1 -u root -p sales \
+  -e "LOAD DATA LOCAL INFILE 'oltpdata.csv'
+      INTO TABLE sales_data
+      FIELDS TERMINATED BY ','
+      LINES TERMINATED BY '\n';"
+```
+
+If local infile is disabled, import the file through phpMyAdmin instead, using comma-separated CSV and no header option.
+
+Verify:
+
+```sql
+SELECT COUNT(*) FROM sales_data;
+```
+
+The expected count is **2605**.
+
+#### Step 3 — Index and inspect
+
+```sql
+CREATE INDEX ts ON sales_data (timestamp);
+SHOW INDEXES FROM sales_data;
+```
+
+The output should list the `ts` index on the `timestamp` column.
+
+#### Step 4 — Dump the table with a script
+
+```bash
+#!/bin/bash
+mysqldump -u root -p sales sales_data > sales_data.sql
+```
+
+```bash
+chmod +x datadump.sh
+./datadump.sh
+ls -l sales_data.sql
+```
+
+The dump contains the table definition and data. In a real job, you would add a timestamp to the filename, compress it, store it offsite, and verify that it restores.
+
+> **Gotcha:** importing a no-header CSV with a "first line contains column names" option will drop or shift the first record. Match the import options to the file.
+
+> **Gotcha:** `LOAD DATA LOCAL INFILE` needs `--local-infile=1` on both the client and, depending on the server, the server configuration.
+
+> **Gotcha:** a dump is not a backup strategy by itself. It needs a schedule, retention, encryption, offsite storage, and a tested restore.
+
+---
+
+### Pitfalls to remember
+
+- **No primary key** means duplicate rows are easy and updates are ambiguous.
+- **Missing foreign keys** create orphan rows that look fine until a join drops them.
+- **Wrong data types** waste space and break comparisons.
+- **Over-indexing** slows writes and increases maintenance.
+- **`UPDATE` or `DELETE` without `WHERE`** changes or removes everything.
+- **`TRUNCATE` or `DROP`** is not a transaction you can casually undo.
+- **Untested backups** are just files.
+- **Over-broad grants** turn one compromised account into a full breach.
+- **Unparameterized SQL** is an injection waiting to happen.
+- **Tuning by guesswork** makes performance worse; measure first.
+
+### Series recap
+
+Part 2 moved from "data on disk" to "data organized and operated":
+
+- Relational modeling turns business concepts into tables, keys, and relationships.
+- ERDs and normalization keep the model honest.
+- SQL is the interface for querying and changing data.
+- Python connects to databases through DB-API, with parameterized queries and pandas for analysis.
+- A DBA keeps the system available, secure, backed up, monitored, and fast.
+- Labs covered ERD design, PostgreSQL administration, MySQL and SQLite indexing, and an OLTP load-and-dump workflow.
+
+In **Part 3**, we leave the strict relational world and look at NoSQL: document stores, wide-column stores, graph databases, and when to choose them.
+
+
+

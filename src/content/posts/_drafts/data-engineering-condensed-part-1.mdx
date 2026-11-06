@@ -1,0 +1,267 @@
+---
+title: "Learning Data Engineering: Foundations, SQL, and NoSQL"
+date: "2026-11-05"
+description: "A condensed tour of data engineering foundations: the ecosystem, Linux and Python, relational modeling and SQL, and when to reach for NoSQL."
+tags: ["Data Engineering", "SQL", "Python", "NoSQL"]
+---
+
+This is the condensed version of Parts 1–3 of my notes on the **IBM Data Engineering Professional Certificate**. The full drafts are long; this post keeps the ideas I actually use: the data landscape, the Linux and Python survival kit, relational modeling and SQL, and the point where NoSQL becomes the right tool.
+
+> *Note: this series is my personal summary of IBM's Data Engineering courses on Coursera. The course materials, labs, and screenshots in these posts belong to IBM / Skills Network — everything here is my own beginner-friendly rewrite for learning purposes.*
+
+The second condensed post covers [warehouses, pipelines, Spark, and GenAI](/blog/data-engineering-condensed-part-2). The [best-practices checklist](/blog/data-engineering-best-practices) is the short version of the mistakes I want to avoid.
+
+---
+
+## The 30-second version
+
+**ELI5:** data engineering is the plumbing of the data world — it gets clean data from where it is created to where it can be used.
+
+- The job is **reliable movement and storage**, not the final dashboard or model.
+- **SQL** is the language of asking questions; **Python** is the language of automating the answers.
+- Relational databases are for **correctness and structure**; NoSQL is for **shape, scale, or access patterns** that do not fit tables.
+- A pipeline is only good if it is **correct, complete, on time, idempotent, observable, and recoverable**.
+- Every design decision is a tradeoff. "It depends" is usually the honest answer.
+
+---
+
+## Foundations: what a data engineer builds
+
+### The ecosystem in one table
+
+A **data ecosystem** is everything involved in creating, moving, storing, and using data: sources, tools, people, and processes.
+
+| Role | What they mostly do |
+| :--- | :--- |
+| **Data engineer** | Builds pipelines, storage, and processing systems |
+| **Data analyst / BI analyst** | Turns data into reports and dashboards |
+| **Data scientist** | Builds models and predictions |
+| **Data architect** | Designs the overall data blueprint |
+| **Database administrator** | Keeps databases healthy, secure, and fast |
+
+Data sources can be databases, applications, APIs, files, logs, clickstreams, sensors, and third-party providers. The data itself is **structured** (tables), **semi-structured** (JSON, XML, logs), or **unstructured** (images, audio, free text).
+
+### OLTP, OLAP, ETL, and ELT
+
+**ELI5:** OLTP is the cash register, OLAP is the monthly management report.
+
+| | OLTP | OLAP |
+| :--- | :--- | :--- |
+| **Purpose** | Run the business | Analyze the business |
+| **Workload** | Many small reads and writes | Few large reads and aggregations |
+| **Data** | Current and detailed | Historical and summarized |
+| **Schema** | Normalized | Dimensional |
+
+**ETL** extracts, transforms, then loads. **ELT** extracts, loads raw data, then transforms inside the target. ELT became practical because cloud storage is cheap and warehouses are powerful. Neither is universally better; governance, cost, latency, and team skills decide.
+
+A minimal Python ETL shape:
+
+```python
+import pandas as pd
+
+raw = pd.read_csv("raw_sales.csv")
+clean = (raw
+    .dropna()
+    .drop_duplicates()
+    .assign(total=lambda d: d["price"] * d["qty"]))
+
+clean.to_csv("clean_sales.csv", index=False)
+```
+
+The production version adds logging, validation, retries, idempotency, and a schedule. The shape stays the same: **extract → transform → load → verify**.
+
+### Warehouse, lake, and lakehouse
+
+| Store | Data | Best for | Main risk |
+| :--- | :--- | :--- | :--- |
+| **Warehouse** | Clean, structured, modeled | BI and consistent metrics | Rigidity and cost |
+| **Lake** | Raw files of any shape | Cheap storage and flexibility | Becoming a data swamp |
+| **Lakehouse** | Lake storage plus table management | BI and ML on one copy | Tooling maturity |
+
+A **data mart** is a smaller slice of a warehouse for one team or subject. **Metadata** is the label on the jar: schema, owner, lineage, freshness, and meaning. Without it, a lake becomes a swamp.
+
+### What I built in the labs
+
+- A **Linux backup script** that archives files modified in the last 24 hours and runs from cron.
+- A **World's Largest Banks ETL** script that scrapes a table, converts market caps with exchange rates, writes CSV and SQLite, and logs every stage.
+
+---
+
+## Linux and Python survival kit
+
+### The commands that matter
+
+| Job | Commands |
+| :--- | :--- |
+| Navigate | `pwd`, `ls -la`, `cd`, `cd ..` |
+| Files | `mkdir -p`, `cp -r`, `mv`, `rm -rf` |
+| Inspect | `head`, `tail -f`, `less`, `wc -l`, `grep -r` |
+| Text | `cut -d',' -f1`, `sort -n`, `uniq` |
+| Network | `curl -O`, `wget`, `ss -tulpn` |
+| Archive | `tar -czvf`, `tar -xzvf` |
+
+Permissions are three doors — owner, group, others — and each can be read (`4`), written (`2`), or executed (`1`).
+
+```bash
+chmod 755 script.sh       # owner rwx, group r-x, others r-x
+chmod u+x backup.sh       # add execute for the owner
+sudo chown user:group file
+```
+
+In cron, use absolute paths and quote variables. A script that works interactively can fail under cron because the environment is smaller.
+
+### Python for data work
+
+The core toolkit is small:
+
+- Types: `int`, `float`, `str`, `bool`, `None`.
+- Collections: list (mutable), tuple (immutable), dict (key-value), set (unique).
+- Control flow: `if`, `for`, `while`, comprehensions.
+- Functions, exceptions, classes, files.
+- **pandas** for tabular data; **NumPy** for fast numeric arrays.
+- **requests** for APIs; **BeautifulSoup** for scraping.
+- Virtual environments and `requirements.txt` for reproducible installs.
+
+The engineering habits matter more than the syntax: small functions, explicit types, tests, logging, and no secrets in source code.
+
+### What I built in the labs
+
+- Shell practice with files, permissions, pipes, and logging.
+- A Python packaging and testing workflow around the banks ETL project.
+
+---
+
+## Relational databases and SQL
+
+### Model first
+
+**ELI5:** a relational database is a set of linked spreadsheets that never contradict each other.
+
+| Model concept | Table concept |
+| :--- | :--- |
+| Entity | Table |
+| Attribute | Column |
+| Instance | Row |
+| 1:N relationship | Foreign key on the many side |
+| M:N relationship | Junction table with two foreign keys |
+
+A **primary key** uniquely identifies a row. A **foreign key** references another table. **Entity integrity** keeps keys unique and non-null; **referential integrity** prevents orphan rows.
+
+Normalization removes redundancy and update anomalies:
+
+| Form | Rule | Removes |
+| :--- | :--- | :--- |
+| **1NF** | Atomic values, no repeating groups | Multi-valued cells |
+| **2NF** | 1NF plus no partial dependency on part of a composite key | Partial dependencies |
+| **3NF** | 2NF plus no transitive dependency between non-key columns | Non-key dependencies |
+
+Normalize for correctness. Denormalize for read speed, with a measured reason.
+
+### The SQL you will actually use
+
+```sql
+SELECT c.region,
+       COUNT(*) AS orders,
+       SUM(o.total) AS revenue
+FROM orders o
+JOIN customers c ON o.customer_id = c.customer_id
+WHERE o.order_date >= DATE '2024-01-01'
+GROUP BY c.region
+HAVING SUM(o.total) > 10000
+ORDER BY revenue DESC;
+```
+
+| Clause | Job |
+| :--- | :--- |
+| `WHERE` | Filter rows before grouping |
+| `GROUP BY` | Create groups |
+| `HAVING` | Filter groups after aggregation |
+| `ORDER BY` | Sort the output |
+| `LIMIT` | Cap the result |
+
+`NULL` means unknown, not zero. Use `IS NULL`, not `= NULL`. Index columns used in filters, joins, and sorting; every index speeds reads and slows writes.
+
+### Transactions and administration
+
+**ACID** means atomicity, consistency, isolation, and durability. A transaction either commits or rolls back. Isolation levels trade consistency for concurrency; deadlocks happen when transactions wait on each other.
+
+A DBA owns availability, integrity, security, and performance:
+
+- Back up, and **test the restore**.
+- Grant the minimum privileges through roles.
+- Monitor connections, slow queries, locks, disk, and replication lag.
+- Read `EXPLAIN` before adding an index.
+- Automate backups and health checks.
+
+### What I built in the labs
+
+- An ERD and normalized CoffeeData schema.
+- PostgreSQL user/role/backup administration.
+- MySQL and SQLite restore, indexing, and timing exercises.
+- An OLTP `sales_data` table with a 2,605-row import and a dump script.
+
+---
+
+## NoSQL
+
+### Pick the shape, not the hype
+
+**ELI5:** NoSQL is a toolbox, not one tool — when a spreadsheet is the wrong shape, reach for a different box.
+
+| Family | Data shape | Examples |
+| :--- | :--- | :--- |
+| **Key-value** | A key mapped to a value | Redis, DynamoDB |
+| **Document** | JSON-like documents | MongoDB, CouchDB |
+| **Wide-column** | Rows with grouped, sparse columns | Cassandra, HBase |
+| **Graph** | Nodes and edges | Neo4j, Neptune |
+| **Vector** | Embeddings plus metadata | Pinecone, Milvus, pgvector |
+
+NoSQL usually trades strict ACID guarantees for availability, flexibility, or scale. **BASE** means basically available, soft state, eventually consistent. The **CAP theorem** says that during a network partition you choose consistency or availability; real systems are often tunable.
+
+### MongoDB in one snippet
+
+```javascript
+db.users.insertOne({ name: "Ada", age: 36 })
+
+db.users.find({ age: { $gt: 30 } })
+  .sort({ age: -1 })
+  .limit(5)
+
+db.users.aggregate([
+  { $match: { age: { $gt: 18 } } },
+  { $group: { _id: "$city", count: { $sum: 1 } } }
+])
+```
+
+### Cassandra in one idea
+
+Cassandra is a peer-to-peer ring built for writes and availability. The **partition key** decides which node owns a row; the **clustering columns** decide the sort order inside that partition. Model from the query backward, avoid hot partitions, and do not force joins into a store that does not have them.
+
+### Embed or reference?
+
+| Embed when | Reference when |
+| :--- | :--- |
+| Data is read together | Data is shared across many parents |
+| Child data is small and bounded | Child data is large or unbounded |
+| One round trip matters | Data changes independently |
+
+Duplication is intentional in document databases. Keep it consistent with application logic or periodic jobs.
+
+### What I built in the labs
+
+- MongoDB movie analysis: import, aggregate, export.
+- A 438-document product catalog capstone.
+- Cassandra keyspace, table, CSV import, index, and count queries.
+
+---
+
+## What I'd actually remember
+
+- **Declare the grain** before designing a table or fact.
+- **Keys and constraints** are not bureaucracy; they prevent silent corruption.
+- **Normalize first**, then denormalize with evidence.
+- **Indexes** are a read/write tradeoff, not a free speed button.
+- **NoSQL modeling starts from the query**, not from an entity diagram.
+- **The same embedding model** must be used for documents and queries in a vector store.
+
+Next: [warehouses, pipelines, Spark, and GenAI](/blog/data-engineering-condensed-part-2), or jump to the [best-practices checklist](/blog/data-engineering-best-practices).

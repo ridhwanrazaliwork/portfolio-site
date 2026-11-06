@@ -1,0 +1,306 @@
+---
+title: "Learning Data Engineering: Warehousing, Pipelines, Spark, and GenAI"
+date: "2026-11-04"
+description: "A condensed tour of data warehousing, BI, ETL and orchestration, Kafka, Spark, machine learning, and generative AI for data engineers."
+tags: ["Data Warehousing", "ETL", "Airflow", "Kafka", "Spark"]
+---
+
+This is the condensed version of Parts 4–7 (technical chapters) of my notes on the **IBM Data Engineering Professional Certificate**. The first condensed post covered [foundations, SQL, and NoSQL](/blog/data-engineering-condensed-part-1). This one covers the analytics and scale side: warehouses, dashboards, pipelines, Kafka, Spark, ML, and GenAI.
+
+> *Note: this series is my personal summary of IBM's Data Engineering courses on Coursera. The course materials, labs, and screenshots in these posts belong to IBM / Skills Network — everything here is my own beginner-friendly rewrite for learning purposes.*
+
+The [best-practices checklist](/blog/data-engineering-best-practices) collects the production lessons from both posts.
+
+---
+
+## Warehouses and dimensional modeling
+
+### Why a warehouse exists
+
+**ELI5:** OLTP is the cash register; the warehouse is the management report built from every register in the company.
+
+A **data warehouse** is integrated, historical, structured data optimized for analytics. It is **subject-oriented** (sales, finance, customers), **time-variant** (it keeps history), and **non-volatile** (loaded and read, not constantly updated in place).
+
+| Store | Data | Best for |
+| :--- | :--- | :--- |
+| **Warehouse** | Clean, modeled, historical | BI and consistent metrics |
+| **Lake** | Raw files of any shape | Cheap storage and flexibility |
+| **Lakehouse** | Lake storage plus table management | BI and ML on one copy |
+| **Mart** | A slice of the warehouse | One team or subject |
+
+### Facts, dimensions, and grain
+
+A **fact table** holds measurements plus foreign keys to dimensions. A **dimension** holds descriptive context: who, what, when, where.
+
+**Declare the grain first**: what does one fact row represent? One order line, one daily balance, or one shipment event are different grains, and mixing them silently breaks every total.
+
+| Measure type | Can it be summed everywhere? | Example |
+| :--- | :--- | :--- |
+| **Additive** | Yes | Sales amount |
+| **Semi-additive** | Across some dimensions | Account balance over time |
+| **Non-additive** | No | Ratios and percentages |
+
+A **star schema** puts the fact table in the middle with denormalized dimensions around it. A **snowflake** normalizes dimensions into sub-dimensions. Start with a star; snowflake only when dimension size or maintenance justifies the extra joins.
+
+**SCD Type 2** keeps history by adding a new dimension row with valid-from, valid-to, and a current flag. That lets an old fact stay joined to the dimension version that was true when the event happened.
+
+### OLAP queries
+
+```sql
+SELECT d.year,
+       p.category,
+       SUM(f.sales) AS total
+FROM fact_sales f
+JOIN dim_date d    ON f.date_key = d.date_key
+JOIN dim_product p ON f.product_key = p.product_key
+GROUP BY ROLLUP (d.year, p.category)
+ORDER BY d.year, total DESC;
+```
+
+`ROLLUP` gives hierarchical subtotals. `CUBE` gives every combination. `GROUPING SETS` gives exactly the groupings you ask for. A **materialized view** stores the result physically, so reads are fast but the result must be refreshed.
+
+### BI in three rules
+
+**ELI5:** a dashboard is a car dashboard — speed, fuel, warnings; not every sensor in the engine.
+
+1. **Start with the decision**, not the chart.
+2. **One screen, one story**: three to five headline KPIs, trends in the middle, detail below.
+3. **Choose the chart by the question**: bar for comparison, line for time, scatter for relationship, table for precision, map for geography.
+
+Cognos and Looker Studio share the same workflow: connect data, bind dimensions and metrics, visualize, filter, arrange, share. Blending data inside a chart is convenient, but join upstream when the model matters.
+
+### What I built in the labs
+
+- A waste-management star schema with `GROUPING SETS`, `ROLLUP`, `CUBE`, and a materialized view.
+- The SoftCart warehouse capstone: 300,000 fact rows, quoted table names, and per-country reporting.
+- Cognos dashboards for a car dealership and an e-commerce dataset.
+
+---
+
+## ETL, Airflow, and Kafka
+
+### ETL versus ELT
+
+| | ETL | ELT |
+| :--- | :--- | :--- |
+| Transform where | Before load | Inside the target |
+| Raw data kept | Often not | Usually yes |
+| Best when | The target is rigid or expensive | Storage and compute are cheap |
+| Reprocessing | Requires re-extraction | Reprocess from raw |
+
+A good pipeline is **correct, complete, timely, idempotent, observable, and recoverable**. Idempotency is the one people skip: rerunning a load must not duplicate data.
+
+### Airflow is an orchestrator, not an engine
+
+**ELI5:** Airflow is the foreman with a clipboard — it knows which task runs when, retries failures, and shows what happened.
+
+```python
+from airflow import DAG
+from airflow.operators.bash import BashOperator
+from datetime import datetime
+
+with DAG(
+    "sales_etl",
+    start_date=datetime(2024, 1, 1),
+    schedule="@daily",
+    catchup=False,
+) as dag:
+
+    extract = BashOperator(
+        task_id="extract",
+        bash_command="curl -fsSL https://example.com/sales.csv -o /tmp/sales.csv",
+    )
+    transform = BashOperator(
+        task_id="transform",
+        bash_command="python /scripts/clean.py",
+    )
+    load = BashOperator(
+        task_id="load",
+        bash_command="python /scripts/load.py",
+    )
+
+    extract >> transform >> load
+```
+
+Keep DAG files in the `dags/` folder, keep top-level code light, and make each task atomic and idempotent. Airflow coordinates; Python, SQL, or Spark do the work.
+
+### Kafka is a replayable log
+
+**ELI5:** producers write events to a durable logbook; consumers read at their own pace and remember where they stopped.
+
+| Concept | Meaning |
+| :--- | :--- |
+| **Topic** | A named stream of events |
+| **Partition** | An ordered, append-only slice of a topic |
+| **Offset** | A record's position in a partition |
+| **Consumer group** | Consumers sharing partitions for scale |
+| **Key** | Determines the partition; same key means same partition and preserved order |
+
+Ordering is guaranteed **within a partition**, not across a topic. A consumer group can have at most one consumer per partition, so partitions cap read parallelism. Delivery semantics are at-most-once, at-least-once, and exactly-once; at-least-once is the common default.
+
+Reliability basics: `acks=all` for durability, an idempotent producer, replication factor of at least three in production, and monitoring for consumer lag. Commit offsets **after** processing, not before.
+
+### What I built in the labs
+
+- Two Airflow DAGs: a six-task toll-data pipeline and a web-log extract/filter/archive pipeline.
+- An incremental MySQL-to-PostgreSQL sync keyed on `rowid`.
+- Kafka basics, keys and offsets, a Python client, and a streaming Kafka-to-MySQL pipeline.
+
+---
+
+## Big data and Spark
+
+### Big data and Hadoop
+
+**ELI5:** when one machine cannot move the pile, you split the pile across a team of machines.
+
+Big data is defined by the **5 Vs**: volume, velocity, variety, veracity, and value. The shift is from **scale up** (a bigger machine) to **scale out** (more machines).
+
+| Hadoop piece | Job |
+| :--- | :--- |
+| **HDFS** | Distributed storage: files split into replicated blocks |
+| **NameNode** | Tracks file names, directories, and block locations |
+| **MapReduce** | Batch processing: map, shuffle, reduce |
+| **YARN** | Cluster resource management |
+| **Hive** | SQL-like queries over HDFS |
+| **HBase** | Wide-column NoSQL on HDFS |
+
+HDFS is optimized for streaming reads, not random updates. Many small files waste NameNode memory. MapReduce is simple and fault-tolerant, but slow for iterative work because every step touches disk.
+
+### Why Spark is faster
+
+**ELI5:** MapReduce writes every step to disk; Spark keeps the pipeline in memory and optimizes the whole plan.
+
+Spark is in-memory, lazy, and DAG-optimized. One engine covers batch, SQL, streaming, ML, and graph work.
+
+| | RDD | DataFrame |
+| :--- | :--- | :--- |
+| **Level** | Low-level distributed collection | Table with a schema |
+| **Optimization** | Manual | Catalyst and Tungsten |
+| **Use** | Fine-grained control | Most ETL and analytics |
+
+**Catalyst** rewrites queries: predicate pushdown, column pruning, join reordering. **Tungsten** improves memory and code generation. Most models and SQL engines need a single `features` vector, which is why `VectorAssembler` shows up everywhere in Spark ML.
+
+```python
+from pyspark.sql import SparkSession
+from pyspark.sql import functions as F
+
+spark = SparkSession.builder.appName("demo").getOrCreate()
+
+df = spark.read.csv("employees.csv", header=True, inferSchema=True)
+
+result = (df
+    .filter(F.col("Salary") > 0)
+    .groupBy("Department")
+    .agg(F.avg("Salary").alias("avg_salary"))
+    .orderBy(F.col("avg_salary").desc()))
+
+result.show()
+```
+
+### Architecture and tuning
+
+The **driver** plans the job, **executors** run tasks and hold cached data, and the **cluster manager** allocates resources. A job splits into **stages** at shuffle boundaries; each stage runs one **task** per partition.
+
+Quick wins:
+
+- Filter early and select only needed columns.
+- Avoid Python UDFs; use built-in functions.
+- Broadcast small tables.
+- Fix skew before adding resources.
+- Use Parquet or ORC, and compact small files.
+- Cache only DataFrames that are reused.
+- Measure in the Spark UI before tuning memory or cores.
+
+### What I built in the labs
+
+- A 15-task employee DataFrame and SparkSQL lab.
+- An e-commerce search-terms capstone with a pretrained sales model.
+
+---
+
+## Spark ML and GenAI
+
+### The ML lifecycle
+
+**ELI5:** a model is a plant — prepare the soil, plant it, water it, and keep pruning.
+
+1. Frame the problem and define success.
+2. Collect and prepare representative data.
+3. Split into train, validation, and test.
+4. Train and tune.
+5. Deploy.
+6. Monitor for drift and retrain.
+
+| Problem | Predicts | Example |
+| :--- | :--- | :--- |
+| **Regression** | A number | House price, noise level |
+| **Classification** | A category | Fraud or not fraud |
+| **Clustering** | Groups without labels | Customer segments |
+
+| Metric family | Metrics |
+| :--- | :--- |
+| **Regression** | MAE, MSE, RMSE, R², MAPE |
+| **Classification** | Accuracy, precision, recall, F1, ROC/AUC |
+| **Clustering** | Silhouette, WSSSE |
+
+Always evaluate on held-out data. Report more than one metric, compare against a baseline, and watch for **data leakage** — information from the test set sneaking into training.
+
+### Pipelines and persistence
+
+```python
+from pyspark.ml import Pipeline, PipelineModel
+from pyspark.ml.feature import VectorAssembler, StandardScaler
+from pyspark.ml.regression import LinearRegression
+
+assembler = VectorAssembler(
+    inputCols=["frequency", "angle", "chord"],
+    outputCol="features",
+)
+scaler = StandardScaler(
+    inputCol="features", outputCol="scaledFeatures"
+)
+lr = LinearRegression(
+    featuresCol="scaledFeatures", labelCol="sound_level"
+)
+
+pipeline = Pipeline(stages=[assembler, scaler, lr])
+model = pipeline.fit(train)
+
+model.write().overwrite().save("models/airfoil")
+loaded = PipelineModel.load("models/airfoil")
+```
+
+Save the **whole pipeline**, not just the estimator, so preprocessing travels with the model. Pin the Spark and library versions; a saved model may not load across major versions.
+
+### GenAI for data engineers
+
+**ELI5:** GenAI is an intern that types fast — great for drafts, dangerous if unsupervised.
+
+A strong prompt has a **role, context, task, constraints, output format, examples, and a request for assumptions**. RAG retrieves relevant documents and injects them into the prompt; fine-tuning changes behavior; agents let the model call tools.
+
+| Task | GenAI can draft | A human must check |
+| :--- | :--- | :--- |
+| SQL | Queries, joins, window functions | Schema, results, performance |
+| Code | PySpark, pandas, Airflow, tests | Correctness and scale |
+| Schema | DDL, ERDs, star models | Keys, grain, constraints, dialect |
+| Pipelines | ETL code and DAGs | Idempotency, retries, security |
+| NL2SQL | English to SQL | Joins, filters, grain, row counts |
+| Data | Synthetic data, anonymization ideas | Privacy, bias, re-identification |
+
+The recurring risks: hallucination, stale knowledge, privacy leakage, prompt injection, non-determinism, cost, and over-reliance. Validate generated SQL and code, never run destructive commands unreviewed, keep raw PII out of public models, and require human sign-off for high-stakes actions.
+
+A practical loop: **define the task → provide the schema → ask for assumptions → generate a draft → check references → run on a small sample → validate results → review security and cost → add tests → sign off.**
+
+### What I built in the labs
+
+- An airfoil-noise regression pipeline: clean to Parquet, assemble features, scale, train, evaluate with MSE/MAE/R², save, reload, and predict.
+- The GenAI course had no lab artifacts, so those notes end with schema and NL2SQL validation exercises.
+
+---
+
+## The whole thing in one paragraph
+
+Land the data, make it trustworthy, store it in the right shape, move it reliably, scale it when one machine is not enough, and then let models use it. The tools change every few years; the principles — keys, grain, idempotency, observability, security, and validation — do not.
+
+Start with [Part 1](/blog/data-engineering-condensed-part-1) if you missed the foundations, or use the [best-practices checklist](/blog/data-engineering-best-practices) as the review sheet.

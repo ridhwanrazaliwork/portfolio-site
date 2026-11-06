@@ -1,0 +1,1115 @@
+---
+title: "Learning Data Engineering Part 5: ETL Pipelines with Shell, Airflow, and Kafka"
+date: "2026-11-05"
+description: "Beginner-friendly notes on ETL and ELT, shell pipelines, Apache Airflow DAGs, Kafka topics and offsets, and streaming ETL."
+tags: ["ETL", "Airflow", "Kafka", "Shell", "Streaming"]
+---
+
+This is Part 5 of my notes on the **IBM Data Engineering Professional Certificate**. Parts 1–4 covered storage and analysis. This part is about movement: how data actually gets from one system to another, on a schedule or in real time.
+
+There are three layers:
+
+1. **ETL and ELT** — the concepts: extract, transform, load, and the tradeoffs.
+2. **Apache Airflow** — the orchestrator that runs the steps in order, retries failures, and shows what happened.
+3. **Apache Kafka** — the event stream that lets producers and consumers work at their own pace.
+
+> *Note: this series is my personal summary of IBM's Data Engineering courses on Coursera. The course materials, labs, and screenshots in these posts belong to IBM / Skills Network — everything here is my own beginner-friendly rewrite for learning purposes.*
+
+The labs include shell-based ETL, two Airflow DAGs, an incremental MySQL-to-PostgreSQL sync, and four Kafka exercises ending with a streaming pipeline into MySQL.
+
+---
+
+## Chapter 1 — ETL, ELT, and pipelines
+
+### ETL in one sentence
+
+**ELI5:** ETL is making orange juice — pick oranges, squeeze and filter them, then pour the juice into bottles.
+
+**ETL** stands for **Extract, Transform, Load**:
+
+| Stage | What happens | Typical tools |
+| :--- | :--- | :--- |
+| **Extract** | Pull data from sources | APIs, SQL, files, CDC, Kafka |
+| **Transform** | Clean, standardize, join, aggregate, enrich | Python, SQL, Spark, dbt |
+| **Load** | Write to a target | Warehouse, lake, database, search index |
+
+It exists because source systems are messy, scattered, and not analytics-ready. One system calls a customer `cust_id`, another calls it `customer_number`, and a third stores it as text with leading zeros.
+
+A good pipeline is:
+
+- **Correct** — the data matches the business rules.
+- **Complete** — no missing rows or periods.
+- **Timely** — it arrives within the SLA.
+- **Idempotent** — rerunning does not duplicate data.
+- **Observable** — it logs, emits metrics, and alerts.
+- **Recoverable** — it retries and can restart from failure.
+
+Common failure modes: schema drift, late data, duplicates, nulls, timezone bugs, and partial loads.
+
+### ELT and the modern stack
+
+**ELI5:** instead of squeezing before storing, dump the oranges into the juicer and let the warehouse do the work.
+
+**ELT** stands for **Extract, Load, Transform**. Raw data is loaded first, then transformed inside the target using its compute.
+
+It became practical because cloud storage is cheap and warehouses are powerful. Benefits: raw data is preserved for reprocessing, the warehouse scales, and transformations can be versioned in SQL or dbt. Challenges: governance, compute cost, and PII sitting in raw storage.
+
+| Dimension | ETL | ELT |
+| :--- | :--- | :--- |
+| Transform where | Before load | After load, inside the target |
+| Raw data kept? | Often not | Usually yes |
+| Target requirements | Can be simpler | Needs strong compute |
+| Flexibility | Lower; reprocessing needs re-extract | Higher; reprocess from raw |
+| Cost profile | ETL compute plus storage | Warehouse compute plus storage |
+| Common era | Traditional and on-prem | Cloud and modern |
+| Tooling | Informatica, Talend, DataStage | dbt, SQL, warehouse-native |
+
+Neither is universally better. Many organizations run hybrid pipelines. ELT is not "no transformation"; it moves the T from before the L to after it.
+
+### Extraction techniques
+
+**ELI5:** getting ingredients from many shops — some deliver, some you pick up, and some arrive constantly.
+
+| Technique | What it does |
+| :--- | :--- |
+| **Full extraction** | Pull everything; simple but heavy |
+| **Incremental extraction** | Pull only new or changed rows by timestamp, ID, or version |
+| **CDC** | Read database logs for inserts, updates, and deletes |
+| **API extraction** | Paginated REST or GraphQL calls with auth, rate limits, and retries |
+| **File extraction** | CSV, JSON, Parquet, or Excel from SFTP, S3, or cloud storage |
+| **Web scraping** | Parse HTML, respecting terms and `robots.txt` |
+| **Streaming extraction** | Kafka, Kinesis, Pub/Sub, IoT |
+| **Database extraction** | Direct queries, read replicas, export utilities |
+
+Consider source availability, load impact, schema drift, incremental watermarks, late-arriving data, PII, retries, and checkpointing.
+
+Best practice: extract to a **landing or staging area** before transforming.
+
+### Transformation techniques
+
+**ELI5:** wash, peel, chop, and combine — make the ingredients ready to cook.
+
+Common transformations:
+
+- **Clean** — nulls, duplicates, whitespace, encoding, typos.
+- **Standardize** — dates, units, currencies, country codes, naming.
+- **Convert types** — strings to dates, numbers, or booleans.
+- **Filter** — remove irrelevant or invalid rows.
+- **Join** — combine datasets, watching grain and fan-out.
+- **Aggregate** — summarize by dimensions.
+- **Derive** — create ratios, buckets, and flags.
+- **Enrich** — add reference data such as geo or product hierarchy.
+- **Pivot or unpivot** — reshape.
+- **Deduplicate** — keep the latest row per key.
+- **Mask or tokenize** — protect PII.
+- **Validate** — apply business rules and constraints.
+
+Transform in the pipeline, in the warehouse, or as close to the source as practical. Test and document every nontrivial transformation.
+
+### Loading techniques
+
+**ELI5:** plate the food — a full new buffet or just refill what changed?
+
+| Technique | Meaning |
+| :--- | :--- |
+| **Full load / refresh** | Replace the target |
+| **Incremental load** | Append or update changed rows |
+| **Upsert / MERGE** | Insert new, update existing |
+| **Bulk load** | `COPY`, `LOAD DATA`, warehouse loaders |
+| **Streaming load** | Continuous writes |
+| **Partitioned writes** | Write by date or category |
+
+Load dimensions before facts in a warehouse. Make reruns idempotent. Validate row counts, checksums, and constraints after the load. Handle late-arriving data explicitly.
+
+### Batch versus streaming
+
+**ELI5:** batch is a daily delivery truck; streaming is a conveyor belt that never stops.
+
+| Dimension | Batch | Streaming |
+| :--- | :--- | :--- |
+| Latency | Minutes to hours | Milliseconds to seconds |
+| Processing | Scheduled chunks | Continuous events |
+| Complexity | Lower | Higher |
+| Cost | Often lower | Often higher |
+| Use cases | Daily reports, month-end close, bulk ETL | Fraud detection, monitoring, live dashboards, IoT |
+| Tools | Airflow, Spark, SQL, dbt | Kafka, Flink, Spark Structured Streaming, ksqlDB |
+
+**Micro-batch** is a middle ground. **Lambda** architecture runs batch and speed layers. **Kappa** is streaming-first.
+
+Choose based on the business latency requirement, not novelty.
+
+### ETL with shell scripts
+
+**ELI5:** shell scripts are duct tape and string — quick pipelines that glue command-line tools together.
+
+Shell is ubiquitous, fast to write, good for file and CLI tasks, and easy to schedule with cron. It is harder to test and maintain at scale, has weak typing, and needs care with error handling.
+
+A typical shell ETL flow:
+
+```text
+curl/wget  →  awk/sed/grep/cut/sort  →  psql/COPY  →  cron
+```
+
+```bash
+#!/bin/bash
+set -euo pipefail
+
+RAW="/tmp/sales_raw.csv"
+CLEAN="/tmp/sales_clean.csv"
+LOG="/var/log/etl/sales.log"
+
+mkdir -p "$(dirname "$LOG")"
+
+# Extract
+curl -fsSL "https://example.com/sales.csv" -o "$RAW"
+
+# Transform: keep the header and rows where amount is over 100
+{
+  head -n 1 "$RAW"
+  awk -F, 'NR > 1 && $3 > 100 { print $1 "," $3 }' "$RAW"
+} > "$CLEAN"
+
+# Load into PostgreSQL
+psql -h "$DB_HOST" -U "$DB_USER" -d sales \
+  -c "\copy staging_sales FROM '$CLEAN' CSV HEADER"
+
+echo "$(date -Iseconds) loaded $(wc -l < "$CLEAN") rows" >> "$LOG"
+```
+
+Safety habits:
+
+- `set -euo pipefail` to fail fast.
+- Quote variables.
+- Check dependencies with `command -v`.
+- Use temp files and `trap` for cleanup.
+- Truncate staging or use a batch ID so reruns are idempotent.
+- Keep secrets in environment variables or protected config files.
+
+### Pipelines are DAGs
+
+**ELI5:** a pipeline is a train route — stations (tasks) connected in order, with a schedule.
+
+A **data pipeline** is a series of connected steps that move and transform data.
+
+| Concept | Meaning |
+| :--- | :--- |
+| **DAG** | Directed acyclic graph: tasks with dependencies and no cycles |
+| **Task** | One unit of work |
+| **Dependency** | Task B runs after task A |
+| **Schedule** | When the pipeline runs |
+| **Trigger** | Schedule, event, or manual |
+| **Orchestration** | Coordinating tasks, retries, and monitoring |
+
+Core processes: ingestion, transformation, validation, loading, and monitoring.
+
+Pipeline qualities: idempotent, observable, testable, documented, and recoverable.
+
+Tools: Airflow, Prefect, Dagster, Luigi, dbt, Spark, Kafka, NiFi, and cloud data factories.
+
+---
+
+## Chapter 2 — Apache Airflow
+
+### The foreman with a clipboard
+
+**ELI5:** Airflow is the foreman with a clipboard — it knows which task runs when, retries failures, and shows what happened.
+
+**Apache Airflow** is an open-source workflow orchestration platform.
+
+| Component | Job |
+| :--- | :--- |
+| **Scheduler** | Decides what runs when |
+| **Webserver** | Provides the UI |
+| **Metadata database** | Stores DAG and task state |
+| **Executor** | Runs tasks (Local, Celery, Kubernetes) |
+| **Workers** | Execute tasks in distributed setups |
+
+Key terms:
+
+- **DAG** — a Python file defining tasks and dependencies.
+- **Operator** — a template for a task, such as Bash, Python, or SQL.
+- **Task instance** — one run of a task for a schedule interval.
+
+Airflow is **not** a data processing engine. It orchestrates; Spark, Python, or SQL do the work.
+
+Why DAGs are useful:
+
+- Explicit dependencies.
+- Retries and alerts.
+- Backfills.
+- Visibility into history.
+- Reproducible pipelines as code.
+
+### A DAG from scratch
+
+**ELI5:** a DAG is a recipe card with arrows — each step points to the next.
+
+```python
+from datetime import datetime
+from airflow import DAG
+from airflow.operators.bash import BashOperator
+from airflow.operators.python import PythonOperator
+
+with DAG(
+    dag_id="sales_etl",
+    start_date=datetime(2024, 1, 1),
+    schedule="@daily",
+    catchup=False,
+    default_args={"retries": 2, "retry_delay": 300},
+    tags=["etl", "sales"],
+) as dag:
+
+    extract = BashOperator(
+        task_id="extract",
+        bash_command="curl -fsSL https://example.com/sales.csv -o /tmp/sales.csv",
+    )
+
+    def transform():
+        import pandas as pd
+        df = pd.read_csv("/tmp/sales.csv")
+        df = df.dropna().drop_duplicates()
+        df.to_csv("/tmp/sales_clean.csv", index=False)
+
+    transform_task = PythonOperator(
+        task_id="transform",
+        python_callable=transform,
+    )
+
+    load = BashOperator(
+        task_id="load",
+        bash_command="python /scripts/load.py",
+    )
+
+    extract >> transform_task >> load
+```
+
+Dependencies use `>>`: `a >> b` means B runs after A. You can also fan out and fan in with `[a, b] >> c`.
+
+Common operators:
+
+| Operator | Use |
+| :--- | :--- |
+| `BashOperator` | Shell commands |
+| `PythonOperator` | Python callables |
+| `EmailOperator` | Notifications |
+| SQL operators | Database statements |
+| `Sensor` | Wait for a file, partition, or external task |
+
+The **TaskFlow API** uses decorators:
+
+```python
+from airflow.decorators import task
+
+@task
+def extract():
+    return "data"
+
+@task
+def transform(data):
+    return data.upper()
+
+transform(extract())
+```
+
+**XCom** passes small values between tasks. Do not use it for large datasets. **Jinja templating** provides values such as `{{ ds }}`, `{{ ds_nodash }}`, and `{{ data_interval_start }}`.
+
+Airflow 3 changed some imports and scheduling parameters. Avoid heavy top-level code in DAG files; it runs on every scheduler parse.
+
+### The UI and monitoring
+
+**ELI5:** the Airflow UI is mission control — green means good, red means investigate.
+
+Views:
+
+| View | What it shows |
+| :--- | :--- |
+| **DAGs** | List, pause/unpause, trigger |
+| **Grid** | Task states across runs |
+| **Graph** | Dependency view |
+| **Calendar** | Schedule history |
+| **Gantt** | Timing |
+| **Code** | DAG source |
+| **Logs** | Per-task logs |
+
+Task states: queued, running, success, failed, skipped, up_for_retry, upstream_failed.
+
+Actions: trigger, clear, mark success or failed, backfill.
+
+Monitoring sources: task logs, scheduler and webserver logs, metadata database queries, metrics (StatsD, Prometheus, OpenTelemetry), and alerts on failure or SLA miss.
+
+Best practices: set retries and delays, use SLAs and alerts, keep tasks atomic, make tasks idempotent, use pools to limit concurrency, and avoid catchup on new DAGs unless you need it.
+
+### Hands-on lab: ETL with BashOperator in Airflow
+
+**Scenario:** a toll-road company receives data in three different file formats. Build a DAG that unzips the files, extracts the useful columns, consolidates them, transforms the vehicle type to uppercase, and writes the result to a staging folder.
+
+This was the Airflow final assignment. The DAG had six Bash tasks.
+
+#### Step 1 — Prepare the folders and data
+
+```bash
+sudo mkdir -p /home/project/airflow/dags/finalassignment/staging
+sudo chmod -R 777 /home/project/airflow/dags/finalassignment
+
+sudo curl <toll-data-archive-url> \
+  -o /home/project/airflow/dags/finalassignment/tolldata.tgz
+```
+
+The archive contains a CSV, a TSV, a fixed-width text file, and a `fileformats.txt` that documents the fixed-width positions.
+
+#### Step 2 — Write the DAG
+
+Save it as `/home/project/airflow/dags/ETL_toll_data.py`:
+
+```python
+from airflow import DAG
+from airflow.operators.bash import BashOperator
+from datetime import datetime, timedelta
+
+default_args = {
+    "owner": "data-team",
+    "start_date": datetime.now(),
+    "email": ["data-team@example.com"],
+    "email_on_failure": True,
+    "email_on_retry": True,
+    "retries": 1,
+    "retry_delay": timedelta(minutes=5),
+}
+
+dag = DAG(
+    dag_id="ETL_toll_data",
+    default_args=default_args,
+    description="Toll data ETL",
+    schedule_interval="@daily",
+)
+
+unzip_data = BashOperator(
+    task_id="unzip_data",
+    bash_command="tar -xzf /home/project/airflow/dags/finalassignment/tolldata.tgz -C /home/project/airflow/dags/finalassignment",
+    dag=dag,
+)
+
+extract_data_from_csv = BashOperator(
+    task_id="extract_data_from_csv",
+    bash_command='cut -d"," -f1-4 /home/project/airflow/dags/finalassignment/vehicle-data.csv > /home/project/airflow/dags/finalassignment/csv_data.csv',
+    dag=dag,
+)
+
+extract_data_from_tsv = BashOperator(
+    task_id="extract_data_from_tsv",
+    bash_command="cut -f1-3 /home/project/airflow/dags/finalassignment/tollplaza-data.tsv > /home/project/airflow/dags/finalassignment/tsv_data.csv",
+    dag=dag,
+)
+
+extract_data_from_fixed_width = BashOperator(
+    task_id="extract_data_from_fixed_width",
+    bash_command="cut -c59-62,64-65 /home/project/airflow/dags/finalassignment/payment-data.txt > /home/project/airflow/dags/finalassignment/fixed_width_data.csv",
+    dag=dag,
+)
+
+consolidate_data = BashOperator(
+    task_id="consolidate_data",
+    bash_command="paste /home/project/airflow/dags/finalassignment/csv_data.csv /home/project/airflow/dags/finalassignment/tsv_data.csv /home/project/airflow/dags/finalassignment/fixed_width_data.csv > /home/project/airflow/dags/finalassignment/extracted_data.csv",
+    dag=dag,
+)
+
+transform_data = BashOperator(
+    task_id="transform_data",
+    bash_command='tr "[a-z]" "[A-Z]" < /home/project/airflow/dags/finalassignment/extracted_data.csv > /home/project/airflow/dags/finalassignment/staging/transformed_data.csv',
+    dag=dag,
+)
+
+unzip_data >> extract_data_from_csv >> extract_data_from_tsv >> extract_data_from_fixed_width >> consolidate_data >> transform_data
+```
+
+What each task does:
+
+| Task | Command | Output |
+| :--- | :--- | :--- |
+| `unzip_data` | `tar -xzf` | Extracted source files |
+| `extract_data_from_csv` | `cut -d"," -f1-4` | First four CSV columns |
+| `extract_data_from_tsv` | `cut -f1-3` | First three TSV columns |
+| `extract_data_from_fixed_width` | `cut -c59-62,64-65` | Payment code and vehicle code |
+| `consolidate_data` | `paste` | One combined file |
+| `transform_data` | `tr` | Uppercased vehicle type in `staging/` |
+
+#### Step 3 — Run and verify
+
+```bash
+airflow dags list
+airflow dags list-import-errors
+airflow dags unpause ETL_toll_data
+airflow dags trigger ETL_toll_data
+airflow tasks list ETL_toll_data
+airflow dags list-runs --dag-id ETL_toll_data
+```
+
+All six tasks should turn green. If the DAG does not appear, the file is not inside the `dags/` folder.
+
+> **Gotcha:** `start_date = datetime.now()` with `@daily` means the first scheduled run is tomorrow. Use the manual trigger to create a run now.
+
+> **Gotcha:** the fixed-width positions come from `fileformats.txt`. If the file says different columns, use those positions instead of copying `59-62,64-65`.
+
+> **Version note:** Airflow 3 uses different imports and `schedule=` instead of `schedule_interval=` in some setups. Check the installed version.
+
+### Hands-on lab: web-log DAG capstone
+
+**Scenario:** analyze an Apache access log, extract the IP addresses, remove one noisy IP, and archive the result.
+
+Save as `/home/project/airflow/dags/process_web_log.py`:
+
+```python
+from airflow import DAG
+from airflow.operators.bash import BashOperator
+from datetime import datetime
+
+default_args = {
+    "owner": "data-team",
+    "start_date": datetime(2024, 1, 1),
+    "email": ["data-team@example.com"],
+}
+
+dag = DAG(
+    dag_id="process_web_log",
+    default_args=default_args,
+    description="Extract, transform and load web server log data",
+    schedule_interval="@daily",
+)
+
+extract_data = BashOperator(
+    task_id="extract_data",
+    bash_command='cut -d" " -f1 /home/project/airflow/dags/capstone/accesslog.txt > /home/project/airflow/dags/capstone/extracted_data.txt',
+    dag=dag,
+)
+
+transform_data = BashOperator(
+    task_id="transform_data",
+    bash_command='grep -v "198.46.149.143" /home/project/airflow/dags/capstone/extracted_data.txt > /home/project/airflow/dags/capstone/transformed_data.txt',
+    dag=dag,
+)
+
+load_data = BashOperator(
+    task_id="load_data",
+    bash_command="tar -cvf /home/project/airflow/dags/capstone/weblog.tar /home/project/airflow/dags/capstone/transformed_data.txt",
+    dag=dag,
+)
+
+extract_data >> transform_data >> load_data
+```
+
+Run:
+
+```bash
+airflow dags list
+airflow dags unpause process_web_log
+airflow dags list-runs --dag-id process_web_log
+```
+
+The log has 10,000 lines. The IP `198.46.149.143` appears 82 times, so the transformed file should have 9,918 lines, and `weblog.tar` should contain `transformed_data.txt`.
+
+> **Gotcha:** the log format matters. The IP is the first space-delimited field in this dataset; a different log format would need a different `cut`.
+
+> **Gotcha:** if `cut` or `grep` fails, read the task log. The usual cause is a typo in an absolute path.
+
+### Hands-on lab: incremental MySQL-to-PostgreSQL sync
+
+**Scenario:** MySQL is the staging warehouse and PostgreSQL is production. Copy only rows that are newer than the maximum `rowid` already in production.
+
+This was the first ETL capstone lab.
+
+#### Step 1 — Prepare both databases
+
+In MySQL:
+
+```sql
+CREATE DATABASE sales;
+```
+
+Import the provided `sales.sql`. It creates `sales_data` with 13,939 rows and columns `rowid`, `product_id`, `customer_id`, and `quantity`.
+
+In PostgreSQL:
+
+```sql
+CREATE TABLE sales_data (
+    rowid      INT,
+    product_id INT,
+    customer_id INT,
+    price      DECIMAL DEFAULT 0.0 NOT NULL,
+    quantity   INT,
+    timestamp  TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+```
+
+The `sales.csv` file contains the header row twice. Delete one header before importing, or the import fails. After cleanup, it has 12,185 data rows with rowids 104–12,288.
+
+#### Step 2 — Write the sync functions
+
+```python
+import os
+import mysql.connector as mysql
+import psycopg2
+
+mysql_conn = mysql.connect(
+    user="root",
+    password=os.environ["MYSQL_PASSWORD"],
+    host=os.environ["MYSQL_HOST"],
+    database="sales",
+)
+mysql_cur = mysql_conn.cursor()
+
+pg_conn = psycopg2.connect(
+    user="postgres",
+    password=os.environ["PG_PASSWORD"],
+    host=os.environ["PG_HOST"],
+    port="5432",
+    dbname="postgres",
+)
+pg_cur = pg_conn.cursor()
+
+def get_last_rowid():
+    pg_cur.execute("SELECT MAX(rowid) FROM sales_data")
+    return pg_cur.fetchone()[0]
+
+def get_latest_records(rowid):
+    mysql_cur.execute(
+        "SELECT rowid, product_id, customer_id, quantity "
+        "FROM sales_data WHERE rowid > %s",
+        (rowid,),
+    )
+    return mysql_cur.fetchall()
+
+def insert_records(records):
+    pg_cur.executemany(
+        "INSERT INTO sales_data "
+        "(rowid, product_id, customer_id, quantity) "
+        "VALUES (%s, %s, %s, %s)",
+        records,
+    )
+    pg_conn.commit()
+
+last_row_id = get_last_rowid()
+new_records = get_latest_records(last_row_id)
+insert_records(new_records)
+
+mysql_cur.close()
+mysql_conn.close()
+pg_cur.close()
+pg_conn.close()
+```
+
+The output pattern is:
+
+```text
+Last row id on production datawarehouse = 12288
+New rows on staging datawarehouse = 1651
+New rows inserted into production datawarehouse = 1651
+```
+
+The exact counts depend on the dataset version. What matters is the pattern: read the high-water mark, fetch rows above it, insert them, commit.
+
+> **Gotcha:** use parameterized queries (`%s`) for the rowid. String concatenation is a SQL injection risk and breaks on types.
+
+> **Gotcha:** the double header in `sales.csv` is real. Remove one before importing.
+
+> **Gotcha:** connection details change every lab session. Read them from the current Toolbox panel; never reuse an old host or password.
+
+---
+
+## Chapter 3 — Apache Kafka
+
+### The durable logbook
+
+**ELI5:** Kafka is a giant, durable logbook — producers write events, consumers read them at their own pace.
+
+**Apache Kafka** is a distributed event streaming platform.
+
+| Concept | Meaning |
+| :--- | :--- |
+| **Event** | A record with a key, value, timestamp, and headers |
+| **Topic** | A named stream of events |
+| **Partition** | An ordered, append-only slice of a topic |
+| **Offset** | The position of a record within a partition |
+| **Producer** | Writes events |
+| **Consumer** | Reads events |
+| **Consumer group** | Consumers sharing partitions for scale |
+| **Broker** | A Kafka server |
+| **Cluster** | Multiple brokers |
+| **Replication factor** | Number of copies of each partition |
+| **Leader / followers** | One leader serves reads and writes; followers replicate |
+| **ISR** | In-sync replicas |
+| **Retention** | Time- or size-based; events are not deleted on read |
+| **Log compaction** | Keeps the latest value per key |
+
+Ordering is guaranteed **within a partition**, not across the whole topic. That is why the key matters: messages with the same key go to the same partition and stay in order.
+
+Kafka is used for event streaming, logs, metrics, CDC, messaging, activity tracking, and real-time pipelines.
+
+### Write path, read path, and consumer groups
+
+**ELI5:** producers drop letters into sorted mailboxes (partitions); consumers pick them up and remember where they stopped (offsets).
+
+Write path:
+
+```text
+producer → topic partition → broker leader → replicas
+```
+
+Read path:
+
+```text
+consumer → fetch from offset → process → commit offset
+```
+
+A **consumer group** lets multiple consumers share the work. Each partition is consumed by at most one consumer in the group, so the maximum useful parallelism is the number of partitions.
+
+Delivery semantics:
+
+| Semantics | Behavior |
+| :--- | :--- |
+| **At most once** | May lose messages |
+| **At least once** | May duplicate; the common default |
+| **Exactly once** | Transactions and idempotence; more complex |
+
+Reliability rules:
+
+- Use `acks=all` when durability matters.
+- Enable the idempotent producer.
+- Use a replication factor of at least 3 in production.
+- Monitor consumer lag.
+- Use a schema registry for Avro, Protobuf, or JSON Schema.
+
+### CLI and Python
+
+**ELI5:** the CLI is a manual mailroom; the Python client is a robot that sorts mail automatically.
+
+```bash
+# List topics
+kafka-topics.sh --bootstrap-server localhost:9092 --list
+
+# Create a topic
+kafka-topics.sh --bootstrap-server localhost:9092 \
+  --create --topic events --partitions 3 --replication-factor 1
+
+# Describe
+kafka-topics.sh --bootstrap-server localhost:9092 \
+  --describe --topic events
+
+# Produce
+kafka-console-producer.sh --bootstrap-server localhost:9092 --topic events
+
+# Consume from the beginning
+kafka-console-consumer.sh --bootstrap-server localhost:9092 \
+  --topic events --from-beginning --group etl-group
+```
+
+Some installations use `kafka-topics` without the `.sh`, or keep the scripts under `/opt/kafka/bin`. `--zookeeper` is legacy; modern Kafka uses `--bootstrap-server`.
+
+Python with `kafka-python`:
+
+```python
+import json
+from kafka import KafkaProducer, KafkaConsumer
+
+producer = KafkaProducer(
+    bootstrap_servers="localhost:9092",
+    value_serializer=lambda v: json.dumps(v).encode("utf-8"),
+)
+
+producer.send("events", {"user": "ada", "action": "login"})
+producer.flush()
+producer.close()
+
+consumer = KafkaConsumer(
+    "events",
+    bootstrap_servers="localhost:9092",
+    group_id="etl-group",
+    auto_offset_reset="earliest",
+    enable_auto_commit=True,
+    value_deserializer=lambda v: json.loads(v.decode("utf-8")),
+)
+
+for msg in consumer:
+    print(msg.key, msg.value, msg.offset)
+```
+
+`confluent-kafka` is a different library with a different API (`Producer.produce`, `Consumer.poll`). Do not mix examples from the two.
+
+Commit offsets deliberately for at-least-once processing. Close producers and consumers cleanly.
+
+### Hands-on lab: Kafka basics
+
+**Scenario:** start a single-node Kafka broker and send messages through the `news` topic.
+
+#### Step 1 — Start the broker
+
+```bash
+wget https://archive.apache.org/dist/kafka/3.8.0/kafka_2.13-3.8.0.tgz
+tar -xzf kafka_2.13-3.8.0.tgz
+cd kafka_2.13-3.8.0
+
+KAFKA_CLUSTER_ID="$(bin/kafka-storage.sh random-uuid)"
+bin/kafka-storage.sh format -t $KAFKA_CLUSTER_ID -c config/kraft/server.properties
+bin/kafka-server-start.sh config/kraft/server.properties
+```
+
+The server is ready when the log says `Kafka Server started`. Keep this terminal open; open new terminals for producers and consumers.
+
+#### Step 2 — Create, produce, consume
+
+```bash
+bin/kafka-topics.sh --create --topic news --bootstrap-server localhost:9092
+```
+
+Producer:
+
+```bash
+bin/kafka-console-producer.sh --bootstrap-server localhost:9092 --topic news
+```
+
+Type messages one per line:
+
+```text
+Good morning
+Good day
+Enjoy the Kafka lab
+```
+
+Consumer:
+
+```bash
+bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 \
+  --topic news --from-beginning
+```
+
+All three messages should appear, plus any new messages in real time.
+
+Kafka stores the partition data on disk:
+
+```bash
+ls /tmp/kraft-combined-logs/news-0
+```
+
+Practice: create a `weather` topic, produce a few messages, and consume them in a new terminal.
+
+> **Gotcha:** the broker terminal must stay open. Closing it kills Kafka and every producer and consumer loses connection.
+
+> **Gotcha:** producers and consumers block. Use separate terminals, one process per terminal.
+
+### Hands-on lab: message keys, partitions, and offsets
+
+**Scenario:** use a bank ATM stream to see why keys matter, then inspect consumer groups and offsets.
+
+#### Step 1 — Create a two-partition topic
+
+```bash
+bin/kafka-topics.sh --create --topic bankbranch --partitions 2 --bootstrap-server localhost:9092
+bin/kafka-topics.sh --describe --topic bankbranch --bootstrap-server localhost:9092
+```
+
+#### Step 2 — Produce without keys
+
+```bash
+bin/kafka-console-producer.sh --bootstrap-server localhost:9092 --topic bankbranch
+```
+
+```text
+{"atmid": 1, "transid": 100}
+{"atmid": 1, "transid": 101}
+{"atmid": 2, "transid": 200}
+{"atmid": 1, "transid": 102}
+{"atmid": 2, "transid": 201}
+```
+
+Consume with `--from-beginning`. The messages appear out of published order because they were spread across partitions round-robin.
+
+#### Step 3 — Produce with keys
+
+Restart the producer with key parsing:
+
+```bash
+bin/kafka-console-producer.sh --bootstrap-server localhost:9092 \
+  --topic bankbranch \
+  --property parse.key=true \
+  --property key.separator=:
+```
+
+```text
+1:{"atmid": 1, "transid": 103}
+1:{"atmid": 1, "transid": 104}
+2:{"atmid": 2, "transid": 202}
+2:{"atmid": 2, "transid": 203}
+1:{"atmid": 1, "transid": 105}
+```
+
+Consume with keys printed:
+
+```bash
+bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 \
+  --topic bankbranch --from-beginning \
+  --property print.key=true --property key.separator=:
+```
+
+Now all messages for ATM 1 land in the same partition and keep their order.
+
+#### Step 4 — Consumer group and lag
+
+```bash
+bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 \
+  --topic bankbranch --group atm-app
+```
+
+If the group has already consumed to the end, no messages appear. Check the group:
+
+```bash
+bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 \
+  --describe --group atm-app
+```
+
+`CURRENT-OFFSET` is how far the group has read. `LOG-END-OFFSET` is the end of the partition. `LAG` is the difference. Produce two more messages and watch lag increase to 1 per partition, then consume and watch it return to 0.
+
+Reset offsets to the beginning:
+
+```bash
+bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 \
+  --topic bankbranch --group atm-app \
+  --reset-offsets --to-earliest --execute
+```
+
+Or shift back by two:
+
+```bash
+bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 \
+  --topic bankbranch --group atm-app \
+  --reset-offsets --shift-by -2 --execute
+```
+
+> **Gotcha:** without keys, messages round-robin across partitions and per-ATM order is lost. The key is what preserves order for related events.
+
+> **Gotcha:** "no messages" usually means the group's offsets are already at the end. Produce more or reset the offsets.
+
+### Hands-on lab: Kafka Python client
+
+**Scenario:** create a topic, produce JSON messages, and consume them with `kafka-python`.
+
+```bash
+pip3 install kafka-python
+```
+
+Admin:
+
+```python
+from kafka.admin import KafkaAdminClient, NewTopic
+
+admin = KafkaAdminClient(bootstrap_servers="localhost:9092", client_id="test")
+topic = NewTopic(name="bankbranch", num_partitions=2, replication_factor=1)
+admin.create_topics(new_topics=[topic])
+```
+
+Producer:
+
+```python
+from kafka import KafkaProducer
+import json
+
+producer = KafkaProducer(
+    value_serializer=lambda v: json.dumps(v).encode("utf-8")
+)
+producer.send("bankbranch", {"atmid": 1, "transid": 100})
+producer.send("bankbranch", {"atmid": 2, "transid": 101})
+producer.flush()
+producer.close()
+```
+
+Consumer:
+
+```python
+from kafka import KafkaConsumer
+
+consumer = KafkaConsumer(
+    "bankbranch",
+    group_id=None,
+    bootstrap_servers=["localhost:9092"],
+    auto_offset_reset="earliest",
+)
+
+for msg in consumer:
+    print(msg.value.decode("utf-8"))
+```
+
+Run the admin and producer, then start the consumer in a new terminal. It prints the JSON messages and keeps listening until you stop it.
+
+If `kafka-python` fails to import on a newer Python, the `kafka-python-ng` fork is a drop-in replacement.
+
+> **Gotcha:** creating a topic that already exists raises `TopicAlreadyExistsError`. Reuse it or choose a new name.
+
+### Hands-on lab: streaming ETL from Kafka to MySQL
+
+**Scenario:** a toll plaza generator writes events to Kafka. A consumer reads them and inserts rows into MySQL.
+
+#### Step 1 — Prepare MySQL
+
+```sql
+CREATE DATABASE tolldata;
+USE tolldata;
+
+CREATE TABLE livetolldata (
+    timestamp     DATETIME,
+    vehicle_id    INT,
+    vehicle_type  CHAR(15),
+    toll_plaza_id SMALLINT
+);
+```
+
+#### Step 2 — Create the topic and get the scripts
+
+```bash
+bin/kafka-topics.sh --create --topic toll --bootstrap-server localhost:9092
+
+wget <toll-traffic-generator-url>
+wget <streaming-data-reader-url>
+```
+
+Set the topic in the generator:
+
+```python
+TOPIC = "toll"
+```
+
+Set the connection values in the reader:
+
+```python
+TOPIC = "toll"
+DATABASE = "tolldata"
+USERNAME = "root"
+PASSWORD = "..."
+```
+
+The reader decodes each message, converts the timestamp, and inserts a row.
+
+#### Step 3 — Run the pipeline
+
+| Terminal | Process |
+| :--- | :--- |
+| A | Kafka broker |
+| B | `python3 toll_traffic_generator.py` |
+| C | `python3 streaming-data-reader.py` |
+
+The reader prints `A car was inserted into the database` for each event. Verify in MySQL:
+
+```sql
+USE tolldata;
+SELECT * FROM livetolldata LIMIT 10;
+```
+
+Stop the generator and reader with `Ctrl+C` after the rows appear.
+
+> **Gotcha:** the generator can run for a long time and produce many messages. Stop it when you have enough data.
+
+> **Gotcha:** the reader's host value may be the container name `mysql` rather than `localhost`. Use the value from the lab environment.
+
+> **Gotcha:** install the MySQL connector version the lab expects; newer versions can change authentication behavior.
+
+### One-page recap
+
+**ELI5:** the whole part in one breath.
+
+- ETL extracts, transforms, and loads; ELT loads raw and transforms in the warehouse.
+- Extraction can be full, incremental, CDC, API, file, or streaming.
+- Transformation cleans, standardizes, joins, aggregates, and enriches.
+- Loading can be full, incremental, upsert, bulk, or streaming.
+- Shell scripts are quick ETL glue; use `set -euo pipefail`, logs, and idempotency.
+- Pipelines are DAGs of tasks; batch versus streaming depends on latency needs.
+- Airflow orchestrates with DAGs, operators, schedules, retries, and a UI.
+- Kafka streams events through topics and partitions; consumers track offsets.
+- Keys preserve ordering by routing related messages to the same partition.
+- Consumer groups scale reads; lag tells you how far behind they are.
+- Reliability comes from idempotency, retries, monitoring, and replayable logs.
+
+### Mini cheat sheet
+
+```bash
+# Shell ETL
+curl -fsSL URL -o raw.csv
+awk -F, 'NR > 1 && $3 > 100 { print $1 "," $3 }' raw.csv > clean.csv
+psql -c "\copy staging FROM 'clean.csv' CSV HEADER"
+
+# Airflow
+airflow dags list
+airflow dags list-import-errors
+airflow dags unpause DAG_ID
+airflow dags trigger DAG_ID
+airflow tasks list DAG_ID
+airflow dags list-runs --dag-id DAG_ID
+
+# Kafka CLI
+kafka-topics.sh --bootstrap-server localhost:9092 --list
+kafka-topics.sh --bootstrap-server localhost:9092 \
+  --create --topic events --partitions 3 --replication-factor 1
+kafka-console-producer.sh --bootstrap-server localhost:9092 --topic events
+kafka-console-consumer.sh --bootstrap-server localhost:9092 \
+  --topic events --from-beginning
+kafka-consumer-groups.sh --bootstrap-server localhost:9092 \
+  --describe --group my-group
+```
+
+```python
+# Airflow DAG skeleton
+from airflow import DAG
+from airflow.operators.bash import BashOperator
+from datetime import datetime
+
+with DAG(
+    "etl",
+    start_date=datetime(2024, 1, 1),
+    schedule="@daily",
+    catchup=False,
+) as dag:
+    extract = BashOperator(task_id="extract", bash_command="...")
+    transform = BashOperator(task_id="transform", bash_command="...")
+    load = BashOperator(task_id="load", bash_command="...")
+    extract >> transform >> load
+```
+
+```python
+# Kafka producer and consumer
+from kafka import KafkaProducer, KafkaConsumer
+
+producer = KafkaProducer(bootstrap_servers="localhost:9092")
+producer.send("events", b"hello")
+producer.flush()
+
+consumer = KafkaConsumer(
+    "events",
+    bootstrap_servers="localhost:9092",
+    group_id="etl-group",
+    auto_offset_reset="earliest",
+)
+for msg in consumer:
+    print(msg.offset, msg.value)
+```
+
+### Pitfalls to remember
+
+- **Non-idempotent reruns** — the most common pipeline bug.
+- **No validation** — a successful job can still load zero rows.
+- **Silent failures** — always check exit codes and logs.
+- **Secrets in scripts** — use environment variables or a secret manager.
+- **Airflow DAG outside `dags/`** — it will not be discovered.
+- **Heavy DAG parsing** — keep top-level code light.
+- **Kafka without keys** — related events lose ordering.
+- **Ignoring consumer lag** — consumers fall behind silently.
+- **Closing the broker** — producers and consumers lose connection.
+- **At-most-once by accident** — committing offsets before processing can lose messages.
+
+### Series recap
+
+Part 5 was about movement and orchestration:
+
+- ETL and ELT are two orders of the same three operations.
+- Shell scripts are the quickest way to glue tools together, with real limits at scale.
+- Airflow turns pipeline steps into a dependency graph with retries, logs, and a UI.
+- Kafka turns events into a replayable log that producers and consumers can share.
+- Labs covered BashOperator DAGs, a web-log capstone, incremental database sync, Kafka keys and offsets, and a streaming Kafka-to-MySQL pipeline.
+
+In **Part 6**, we scale up: big data, Hadoop, and Apache Spark.
+

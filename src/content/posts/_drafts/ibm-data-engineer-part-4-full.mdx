@@ -1,0 +1,926 @@
+---
+title: "Learning Data Engineering Part 4: Data Warehousing and BI Dashboards"
+date: "2026-11-05"
+description: "Beginner-friendly notes on warehouses, dimensional modeling, star schemas, OLAP queries, and building BI dashboards in Cognos and Looker Studio."
+tags: ["Data Warehousing", "Dimensional Modeling", "BI", "Cognos", "Looker Studio"]
+---
+
+This is Part 4 of my notes on the **IBM Data Engineering Professional Certificate**. Part 2 covered databases that run the business: tables, transactions, and SQL. This part is about the databases that *analyze* the business: **data warehouses**.
+
+The distinction matters. An order-entry database is optimized for many small writes. A warehouse is optimized for large reads, history, and aggregation. Trying to make one do both usually gives you a system that is mediocre at each.
+
+> *Note: this series is my personal summary of IBM's Data Engineering courses on Coursera. The course materials, labs, and screenshots in these posts belong to IBM / Skills Network — everything here is my own beginner-friendly rewrite for learning purposes.*
+
+The first half is warehouse design: facts, dimensions, star schemas, slow-changing dimensions, staging, quality checks, and OLAP queries. The second half is the consumption layer: BI concepts, dashboard design, and hands-on Cognos and Looker Studio labs.
+
+---
+
+## Chapter 1 — What a data warehouse is
+
+### The pantry, not the kitchen
+
+**ELI5:** a warehouse is a huge, neatly labeled pantry — ingredients from many farms are cleaned, sorted, and shelved so cooks can grab what they need fast.
+
+A **data warehouse (DW)** is a central repository of **integrated, historical, structured** data, optimized for analytics and reporting rather than day-to-day transactions.
+
+The classic characteristics come from Bill Inmon:
+
+| Characteristic | Meaning |
+| :--- | :--- |
+| **Subject-oriented** | Organized around business subjects such as sales, customers, and finance, not applications |
+| **Integrated** | Consistent naming, formats, and codes from many sources |
+| **Time-variant** | Stores history, not just the current state |
+| **Non-volatile** | Data is loaded and read; it is not constantly updated in place |
+
+Why it exists: operational systems are optimized for transactions, not for cross-system analysis. A warehouse gives one consistent place to answer questions that span orders, inventory, finance, and customer data.
+
+### OLTP versus OLAP
+
+**ELI5:** OLTP is the cash register; OLAP is the monthly management report.
+
+| | OLTP | OLAP |
+| :--- | :--- | :--- |
+| **Purpose** | Run the business | Analyze the business |
+| **Workload** | Many small reads/writes | Few large reads and aggregations |
+| **Data** | Current, detailed | Historical, summarized |
+| **Schema** | Normalized | Dimensional (star/snowflake) |
+| **Example** | Order entry | Monthly sales by region |
+
+A warehouse is usually fed from one or more OLTP systems, transformed, and modeled for analysis. That separation protects the transactional system from heavy reports and gives analysts a consistent view.
+
+Benefits: a single source of truth, faster reporting, historical analysis, and consistent metrics.
+
+Costs: build and maintenance effort, latency (warehouses are not real-time by default), and governance overhead.
+
+### Warehouse, lake, and lakehouse
+
+**ELI5:** a warehouse is a labeled pantry, a lake is a raw reservoir, and a lakehouse is a lake with a pantry built on top.
+
+| | Data lake | Data warehouse | Lakehouse |
+| :--- | :--- | :--- | :--- |
+| **Data** | Raw, any format | Cleaned, structured | Raw plus managed tables |
+| **Schema** | On read | On write | Enforced on read/write via table format |
+| **Users** | Data scientists, engineers | Analysts, BI | Both |
+| **Storage cost** | Lower | Higher | Lower |
+| **Query performance** | Flexible, sometimes slow | Fast, governed | Good, improving |
+| **Main risk** | Data swamp | Rigidity and cost | Tooling maturity |
+
+A **data mart** is a smaller slice of a warehouse focused on one department or subject.
+
+| Type | Source | Tradeoff |
+| :--- | :--- | :--- |
+| **Dependent** | Enterprise warehouse | Consistent, governed, but depends on warehouse delivery |
+| **Independent** | Source systems directly | Fast to stand up, risk of conflicting metrics |
+| **Hybrid** | Mix of both | Pragmatic, but needs governance |
+
+Marts are useful because they reduce clutter for business users. They become a problem when every team builds its own metrics with no shared definitions. **Conformed dimensions** and a governed semantic layer are the antidote.
+
+### Popular warehouse systems
+
+**ELI5:** different warehouse brands — all store shelves, but each has its own layout and strengths.
+
+| System | Notes |
+| :--- | :--- |
+| **Teradata** | Large-scale, mature MPP warehouse |
+| **Oracle Exadata** | Engineered Oracle appliance |
+| **IBM Db2 Warehouse** | IBM MPP/columnar warehouse with BLU acceleration |
+| **SQL Server / Synapse** | Microsoft ecosystem |
+| **Snowflake** | Separation of storage and compute; multi-cluster |
+| **Google BigQuery** | Serverless, columnar, pay-per-query/bytes |
+| **Amazon Redshift** | Cluster-based, columnar |
+| **Azure Synapse Analytics** | SQL pools plus Spark integration |
+| **Databricks SQL** | Lakehouse SQL on open formats |
+
+Two architectural ideas show up everywhere:
+
+- **MPP (Massively Parallel Processing)** — many nodes process slices of data in parallel.
+- **Columnar storage** — read only the columns a query needs, compress better, and scan faster for analytics.
+
+Modern cloud warehouses often **separate storage and compute**, so each can scale independently.
+
+### Selecting a warehouse
+
+**ELI5:** pick the warehouse that fits your data, budget, team, and the questions you need answered.
+
+Ask:
+
+- What is the workload: batch reporting, ad-hoc analytics, high concurrency, mixed?
+- How much data, how fast is it growing, and how long must it be retained?
+- What latency and SLA are required?
+- How do storage and compute scale?
+- What is the cost model: licensing, storage, compute, egress, operations?
+- Does it integrate with your BI, ETL, and cloud stack?
+- What security and compliance requirements apply?
+- Will you self-manage it or buy a managed service?
+- What can your team actually operate?
+- How portable is the data, and how much lock-in are you accepting?
+
+Define the workload and SLAs first, then compare systems against them.
+
+### Warehouse architectures
+
+**ELI5:** the architecture is the building plan — where data enters, where it is stored, and how it reaches users.
+
+Common layers:
+
+```text
+sources
+  │
+  ▼
+staging        land, validate, clean
+  │
+  ▼
+integration    conformed, historized core
+  │
+  ▼
+presentation   marts, cubes, semantic layer
+  │
+  ▼
+access         BI tools, SQL, notebooks
+```
+
+The major approaches:
+
+| Approach | Shape | Strength | Cost |
+| :--- | :--- | :--- | :--- |
+| **Inmon** | Top-down, normalized enterprise warehouse, then dependent marts | Consistency and governance | Slower and more expensive to build |
+| **Kimball** | Bottom-up dimensional marts plus conformed dimensions | Fast delivery, business-friendly | Requires discipline across marts |
+| **Data Vault** | Hubs (keys), links (relationships), satellites (attributes and history) | Auditable and flexible | More complex |
+| **Medallion** | Bronze, silver, gold zones in a lakehouse | Simple progressive refinement | Needs governance to avoid a swamp |
+
+**Lambda** architecture runs batch and speed layers in parallel. **Kappa** uses streaming only. Modern cloud warehouses often lean on ELT, separation of storage and compute, and open table formats.
+
+The choice depends on delivery speed, governance needs, team skills, and existing systems. There is no universal winner.
+
+### Facts and dimensions
+
+**ELI5:** facts are the numbers (sales, quantity); dimensions are the labels (who, what, when, where).
+
+A **fact table** contains measurements plus foreign keys to dimensions. It is usually long and narrow.
+
+A **dimension table** contains descriptive attributes. It is usually shorter and wide.
+
+```text
+                 dim_date
+                    │
+dim_product ──── fact_sales ──── dim_store
+                    │
+               dim_customer
+```
+
+**Grain** is what one fact row represents. "One row per order line" is a grain. "One row per order" is a different grain. **Declare the grain before designing anything else**, because every measure and key depends on it.
+
+Measure types:
+
+| Type | Meaning | Example |
+| :--- | :--- | :--- |
+| **Additive** | Can be summed across all dimensions | Sales amount |
+| **Semi-additive** | Can be summed across some dimensions | Account balance over time |
+| **Non-additive** | Cannot be summed | Ratios and percentages |
+
+Fact table types:
+
+| Type | What it stores |
+| :--- | :--- |
+| **Transaction fact** | One row per event |
+| **Periodic snapshot** | One row per period, such as a daily balance |
+| **Accumulating snapshot** | One row per process with milestone dates, such as order → shipped → delivered |
+| **Factless fact** | Records events or coverage with no measures |
+
+Dimension types:
+
+| Type | Meaning |
+| :--- | :--- |
+| **Conformed dimension** | Shared across fact tables and marts |
+| **Role-playing dimension** | The same dimension used multiple times, such as order date and ship date |
+| **Degenerate dimension** | An identifier in the fact table with no separate dimension, such as an invoice number |
+| **Junk dimension** | A bundle of low-cardinality flags and attributes |
+| **Slowly changing dimension (SCD)** | A dimension whose attributes change over time |
+
+### Slowly changing dimensions
+
+**ELI5:** an SCD decides whether you care what a customer's address *used to be*.
+
+| SCD type | Behavior | History |
+| :--- | :--- | :--- |
+| **Type 1** | Overwrite the old value | None |
+| **Type 2** | Add a new row with valid-from, valid-to, and current flag | Full history |
+| **Type 3** | Keep the previous value in an extra column | Limited history |
+
+Type 2 is the workhorse for warehouses. It lets a fact stay joined to the dimension version that was true when the event happened.
+
+Warehouses usually use **surrogate keys** — generated integer keys — rather than natural business keys. Surrogate keys are stable, compact, and join-friendly. The natural key remains as an attribute for traceability.
+
+### Star and snowflake schemas
+
+**ELI5:** a star has one fact table in the middle with dimensions around it; a snowflake breaks dimensions into smaller linked pieces.
+
+**Star schema:**
+
+- Fact table in the center.
+- Denormalized dimension tables around it.
+- Simple one-hop joins.
+- Fast queries and easy BI modeling.
+- Some redundancy in dimensions.
+
+**Snowflake schema:**
+
+- Dimensions are normalized into sub-dimensions, such as product → category → department.
+- Less redundancy.
+- More joins and more complexity.
+- Useful when dimension hierarchies are large and change independently.
+
+| | Star | Snowflake |
+| :--- | :--- | :--- |
+| Complexity | Simple | More complex |
+| Query speed | Usually faster | More joins |
+| Redundancy | Higher | Lower |
+| BI friendliness | High | Moderate |
+| Maintenance | Easier | More normalized |
+
+Start with a star. Snowflake only when the dimension size or maintenance pattern justifies it. A **galaxy schema** is multiple fact tables sharing conformed dimensions.
+
+### Cubes and OLAP queries
+
+**ELI5:** a cube is a pre-built summary box — instead of adding up every sale, grab the total that is already calculated.
+
+A **cube** is a multidimensional summary: dimensions such as time, product, and region, plus measures such as sales and quantity.
+
+OLAP operations:
+
+| Operation | Meaning |
+| :--- | :--- |
+| **Roll-up** | Summarize to a coarser level, such as day → month |
+| **Drill-down** | Go to a finer level, such as month → day |
+| **Slice** | Fix one dimension, such as region = West |
+| **Dice** | Fix multiple dimensions |
+| **Pivot** | Rotate axes |
+
+SQL supports the same ideas:
+
+```sql
+-- Hierarchical subtotals plus a grand total
+SELECT region, product, SUM(sales) AS total
+FROM fact_sales
+GROUP BY ROLLUP (region, product);
+
+-- All combinations of the grouping columns
+SELECT region, product, SUM(sales) AS total
+FROM fact_sales
+GROUP BY CUBE (region, product);
+
+-- Exactly the groupings you specify
+SELECT region, product, SUM(sales) AS total
+FROM fact_sales
+GROUP BY GROUPING SETS ((region), (product), ());
+```
+
+`GROUPING()` helps distinguish a real null from a subtotal null.
+
+A **materialized view** stores a query result physically. Reads are fast, but the result must be refreshed. Refresh modes include on commit, on demand, and scheduled. The optimizer may rewrite a query to use the materialized view automatically.
+
+Db2 calls these **materialized query tables (MQTs)**. The concept is the same; the syntax differs.
+
+### Staging and data quality
+
+**ELI5:** staging is the loading dock — data arrives, gets checked and unpacked, then moves into the warehouse.
+
+A **staging area** is intermediate storage between sources and the warehouse. It exists to:
+
+- Land raw extracts without touching the warehouse.
+- Clean, deduplicate, standardize, and validate.
+- Isolate source failures.
+- Support restartability and auditing.
+
+The flow is **extract → stage → transform → load → validate**. Keep raw and transformed stages separate, record load timestamps and source filenames, use reject tables for bad rows, and make loads idempotent.
+
+Data quality has several dimensions:
+
+| Dimension | Question |
+| :--- | :--- |
+| **Completeness** | Are required values present? |
+| **Uniqueness** | Are keys duplicated? |
+| **Validity** | Are values in allowed formats and ranges? |
+| **Consistency** | Does the same fact agree across tables? |
+| **Accuracy** | Does it match reality or the source? |
+| **Timeliness** | Is it fresh enough? |
+| **Integrity** | Do foreign keys resolve? |
+
+Useful checks:
+
+```sql
+-- Missing required values
+SELECT COUNT(*) FROM dim_customer WHERE customer_id IS NULL;
+
+-- Duplicate keys
+SELECT customer_id, COUNT(*)
+FROM dim_customer
+GROUP BY customer_id
+HAVING COUNT(*) > 1;
+
+-- Orphan facts
+SELECT COUNT(*)
+FROM fact_sales f
+LEFT JOIN dim_customer c ON f.customer_key = c.customer_key
+WHERE c.customer_key IS NULL;
+
+-- Out-of-range values
+SELECT COUNT(*) FROM fact_sales WHERE quantity < 0;
+```
+
+Quality is a process, not a one-time query. Monitor it continuously.
+
+### Populating and querying the warehouse
+
+**ELI5:** fill the pantry in the right order — label the shelves (dimensions) before stacking the goods (facts).
+
+Loading patterns:
+
+| Pattern | Meaning |
+| :--- | :--- |
+| **Full load** | Load everything, often truncate-and-reload |
+| **Incremental load** | Load only new or changed rows |
+| **CDC** | Capture inserts, updates, and deletes from source logs |
+
+Load dimensions first, then facts. Facts need dimension keys. Map natural keys to surrogate keys during load. Use upserts or `MERGE` so reruns are safe. Handle late-arriving data explicitly. Validate row counts, checksums, and referential integrity after the load.
+
+```sql
+-- PostgreSQL upsert
+INSERT INTO dim_customer (customer_key, customer_id, name)
+VALUES (1, 'C001', 'Ada')
+ON CONFLICT (customer_id)
+DO UPDATE SET name = EXCLUDED.name;
+```
+
+Analytical queries are usually joins plus aggregation:
+
+```sql
+SELECT d.year, p.category, SUM(f.sales) AS total
+FROM fact_sales f
+JOIN dim_date d ON f.date_key = d.date_key
+JOIN dim_product p ON f.product_key = p.product_key
+WHERE d.year = 2024
+GROUP BY ROLLUP (d.year, p.category)
+ORDER BY d.year, total DESC;
+```
+
+Performance tips: filter early, select only needed columns, avoid `SELECT *`, pre-aggregate where possible, partition large fact tables by date, index dimension keys, and inspect query plans.
+
+### One-page recap
+
+**ELI5:** the whole chapter in one breath.
+
+- A warehouse is integrated, historical, non-volatile data for analytics.
+- OLTP runs the business; OLAP analyzes it.
+- Marts are department slices; lakes hold raw data; lakehouses combine lake storage with warehouse reliability.
+- Architectures: Inmon, Kimball, Data Vault, and medallion.
+- Facts are measures; dimensions are context; declare the grain.
+- Star is simple and fast; snowflake normalizes dimensions.
+- SCD Type 2 keeps history with valid-from and valid-to rows.
+- Staging cleans and validates before loading.
+- Data quality covers completeness, uniqueness, validity, consistency, accuracy, timeliness, and integrity.
+- Load dimensions first, then facts; make loads idempotent.
+- Cubes, `ROLLUP`, `CUBE`, and `GROUPING SETS` precompute summaries; materialized views store results.
+- Query with joins and aggregation; check plans and partition large tables.
+
+---
+
+### Hands-on lab: a waste-management star schema
+
+**Scenario:** a waste-management company wants a warehouse for trip data. Design a star schema, create it, load the CSV extracts, and run OLAP queries.
+
+This was the Data Warehouse Fundamentals final assignment. It has a deliberate twist: you design one schema, then the requirements change and you build the real warehouse with a different set of tables.
+
+#### Phase 1 — Design the first star schema
+
+The business wants yearly, monthly, daily, and weekday reporting, plus waste type and zone analysis.
+
+| Table | Columns |
+| :--- | :--- |
+| `MyDimDate` | `dateid`, `date`, `day`, `dayname`, `weekday`, `weekofyear`, `month`, `monthname`, `quarter`, `quartername`, `year` |
+| `MyDimWaste` | `wasteid`, `wastetype` |
+| `MyDimZone` | `zoneid`, `city`, `zone` |
+| `MyFactTrips` | `tripid`, `dateid`, `wasteid`, `zoneid`, `loadweight` |
+
+The fact table holds the keys to each dimension plus the measure, `loadweight`.
+
+Create these in a PostgreSQL database named `Project`:
+
+```sql
+CREATE TABLE mydimdate (
+    dateid      INT NOT NULL PRIMARY KEY,
+    date        DATE NOT NULL,
+    day         INT NOT NULL,
+    dayname     VARCHAR(20) NOT NULL,
+    weekday     VARCHAR(20),
+    weekofyear  INT,
+    month       INT NOT NULL,
+    monthname   VARCHAR(20) NOT NULL,
+    quarter     INT NOT NULL,
+    quartername VARCHAR(20),
+    year        INT NOT NULL
+);
+
+CREATE TABLE mydimwaste (
+    wasteid   INT NOT NULL PRIMARY KEY,
+    wastetype VARCHAR(50) NOT NULL
+);
+
+CREATE TABLE mydimzone (
+    zoneid INT NOT NULL PRIMARY KEY,
+    city   VARCHAR(50) NOT NULL,
+    zone   VARCHAR(50) NOT NULL
+);
+
+CREATE TABLE myfacttrips (
+    tripid     INT NOT NULL PRIMARY KEY,
+    dateid     INT NOT NULL REFERENCES mydimdate(dateid),
+    wasteid    INT NOT NULL REFERENCES mydimwaste(wasteid),
+    zoneid     INT NOT NULL REFERENCES mydimzone(zoneid),
+    loadweight NUMERIC(10,2) NOT NULL
+);
+```
+
+This schema is graded, but the scenario then changes. The data format no longer fits, so these tables are intentionally abandoned. Do not load the CSVs into them.
+
+#### Phase 2 — Build the real warehouse
+
+The production design uses different tables in a database named `FinalProject`:
+
+| Table | Columns |
+| :--- | :--- |
+| `dimdate` | `dateid`, `date`, `year`, `quarter`, `quartername`, `month`, `monthname`, `day`, `weekday`, `weekdayname` |
+| `dimtruck` | `truckid`, `trucktype` |
+| `dimstation` | `stationid`, `city` |
+| `facttrips` | `tripid`, `dateid`, `stationid`, `truckid`, `wastecollected` |
+
+```sql
+CREATE TABLE dimdate (
+    dateid      INT NOT NULL PRIMARY KEY,
+    date        DATE NOT NULL,
+    year        INT NOT NULL,
+    quarter     INT NOT NULL,
+    quartername VARCHAR(20),
+    month       INT NOT NULL,
+    monthname   VARCHAR(20) NOT NULL,
+    day         INT NOT NULL,
+    weekday     INT NOT NULL,
+    weekdayname VARCHAR(20) NOT NULL
+);
+
+CREATE TABLE dimtruck (
+    truckid   INT NOT NULL PRIMARY KEY,
+    trucktype VARCHAR(50) NOT NULL
+);
+
+CREATE TABLE dimstation (
+    stationid INT NOT NULL PRIMARY KEY,
+    city      VARCHAR(50) NOT NULL
+);
+
+CREATE TABLE facttrips (
+    tripid         INT NOT NULL PRIMARY KEY,
+    dateid         INT NOT NULL REFERENCES dimdate(dateid),
+    stationid      INT NOT NULL REFERENCES dimstation(stationid),
+    truckid        INT NOT NULL REFERENCES dimtruck(truckid),
+    wastecollected NUMERIC(10,2) NOT NULL
+);
+```
+
+Import the four CSVs in this order: `dimdate`, `dimtruck`, `dimstation`, then `facttrips`. The fact table has foreign keys and is the largest file (over 110,000 rows), so it goes last.
+
+The import is positional. The table columns must match the CSV header order exactly. Turn **Header ON** so the first row is not loaded as data.
+
+#### Phase 3 — Run OLAP queries
+
+Grouping sets give separate subtotals by station and by truck type:
+
+```sql
+SELECT f.stationid,
+       t.trucktype,
+       SUM(f.wastecollected) AS total_waste_collected
+FROM facttrips f
+JOIN dimtruck t ON f.truckid = t.truckid
+GROUP BY GROUPING SETS (f.stationid, t.trucktype)
+ORDER BY f.stationid, t.trucktype;
+```
+
+Rollup gives hierarchical subtotals by year, city, and station:
+
+```sql
+SELECT d.year,
+       s.city,
+       f.stationid,
+       SUM(f.wastecollected) AS total_waste_collected
+FROM facttrips f
+JOIN dimdate d    ON f.dateid = d.dateid
+JOIN dimstation s ON f.stationid = s.stationid
+GROUP BY ROLLUP (d.year, s.city, f.stationid)
+ORDER BY d.year, s.city, f.stationid;
+```
+
+Cube gives every combination:
+
+```sql
+SELECT d.year,
+       s.city,
+       f.stationid,
+       ROUND(AVG(f.wastecollected), 2) AS average_waste_collected
+FROM facttrips f
+JOIN dimdate d    ON f.dateid = d.dateid
+JOIN dimstation s ON f.stationid = s.stationid
+GROUP BY CUBE (d.year, s.city, f.stationid)
+ORDER BY d.year, s.city, f.stationid;
+```
+
+A materialized view stores the maximum waste by city, station, and truck type:
+
+```sql
+CREATE MATERIALIZED VIEW max_waste_stats AS
+SELECT s.city,
+       f.stationid,
+       t.trucktype,
+       MAX(f.wastecollected) AS max_waste_collected
+FROM facttrips f
+JOIN dimstation s ON f.stationid = s.stationid
+JOIN dimtruck t   ON f.truckid = t.truckid
+GROUP BY s.city, f.stationid, t.trucktype;
+
+REFRESH MATERIALIZED VIEW max_waste_stats;
+SELECT * FROM max_waste_stats LIMIT 10;
+```
+
+The `NULL` rows in the grouping outputs are subtotal rows. That is expected, not a bug.
+
+> **Gotcha:** CSV imports are positional. If the table columns are in a different order from the file, the data lands in the wrong columns without necessarily throwing an error.
+
+> **Gotcha:** import dimensions before the fact table, or foreign key checks will reject the fact rows.
+
+> **Gotcha:** the first `Project` schema is a dead end by design. The real work happens in `FinalProject`.
+
+---
+
+### Hands-on lab: the SoftCart warehouse capstone
+
+**Scenario:** SoftCart is an e-commerce company. Build a star schema for sales, load the dimensions and fact table, and produce reporting queries.
+
+#### Phase 1 — Design the schema
+
+The dimensions are date, category, item, and country. The fact table records sales.
+
+| Table | Key columns |
+| :--- | :--- |
+| `softcartDimDate` | `dateid`, date parts down to weekday |
+| `softcartDimCategory` | `categoryid`, `category` |
+| `softcartDimItem` | `itemid`, `item` |
+| `softcartDimCountry` | `countryid`, `country` |
+| `softcartFactSales` | `orderid`, `dateid`, `categoryid`, `itemid`, `countryid`, `price` |
+
+The relationships are many-to-one from the fact table to each dimension.
+
+Generate the DDL from the ERD, create a `staging` database, and run the script there.
+
+#### Phase 2 — Use the production schema
+
+The reviewed production schema lives in a database named `Test1`. It uses quoted mixed-case table names:
+
+| Table | Rows | Columns |
+| :--- | ---: | :--- |
+| `"DimDate"` | 1,096 | `dateid`, `date`, `year`, `quarter`, `quartername`, `month`, `monthname`, `day`, `weekday`, `weekdayname` |
+| `"DimCategory"` | 5 | `categoryid`, `category` |
+| `"DimCountry"` | 56 | `countryid`, `country` |
+| `"FactSales"` | 300,000 | `orderid`, `dateid`, `countryid`, `categoryid`, `amount` |
+
+Import the dimensions first, then `"FactSales"`. The fact file is large, so wait for the import to finish before querying.
+
+Because the tables were created with quoted mixed-case names, you must quote them in queries:
+
+```sql
+SELECT * FROM "FactSales" LIMIT 5;
+```
+
+An unquoted `FactSales` is folded to lowercase and fails with "relation does not exist."
+
+#### Phase 3 — Reporting queries
+
+Grouping sets by country and category:
+
+```sql
+SELECT c.country,
+       cat.category,
+       SUM(f.amount) AS totalsales
+FROM "FactSales" f
+JOIN "DimCountry"  c   ON f.countryid  = c.countryid
+JOIN "DimCategory" cat ON f.categoryid = cat.categoryid
+GROUP BY GROUPING SETS (c.country, cat.category)
+ORDER BY c.country, cat.category;
+```
+
+Rollup by year and country:
+
+```sql
+SELECT d.year,
+       c.country,
+       SUM(f.amount) AS totalsales
+FROM "FactSales" f
+JOIN "DimDate"    d ON f.dateid    = d.dateid
+JOIN "DimCountry" c ON f.countryid = c.countryid
+GROUP BY ROLLUP (d.year, c.country)
+ORDER BY d.year, c.country;
+```
+
+Cube by year and country:
+
+```sql
+SELECT d.year,
+       c.country,
+       ROUND(AVG(f.amount), 2) AS average_sales
+FROM "FactSales" f
+JOIN "DimDate"    d ON f.dateid    = d.dateid
+JOIN "DimCountry" c ON f.countryid = c.countryid
+GROUP BY CUBE (d.year, c.country)
+ORDER BY d.year, c.country;
+```
+
+Materialized view for total sales per country:
+
+```sql
+CREATE MATERIALIZED VIEW total_sales_per_country AS
+SELECT c.country,
+       SUM(f.amount) AS total_sales
+FROM "FactSales" f
+JOIN "DimCountry" c ON f.countryid = c.countryid
+GROUP BY c.country;
+```
+
+Sanity checks from the actual data:
+
+| Check | Value |
+| :--- | ---: |
+| `FactSales` rows | 300,000 |
+| Total amount | 1,201,006,258 |
+| Highest country total | Thailand: 21,848,776 |
+| Lowest country total | Sweden: 21,000,525 |
+
+If your totals do not match, the import order or column mapping is wrong.
+
+> **Gotcha:** quoted table names must stay quoted. `"FactSales"` is not the same identifier as `FactSales` in PostgreSQL.
+
+> **Gotcha:** import the 300,000-row fact file last and wait for completion. Querying a half-loaded table gives plausible but wrong totals.
+
+---
+
+## Chapter 2 — BI and dashboards
+
+### From data to decisions
+
+**ELI5:** BI is turning a pile of numbers into a picture that helps someone decide something.
+
+**Business intelligence (BI)** is the set of tools and practices for turning data into insights, reports, and dashboards.
+
+Analytics maturity:
+
+| Level | Question | Typical output |
+| :--- | :--- | :--- |
+| **Descriptive** | What happened? | Reports, dashboards |
+| **Diagnostic** | Why did it happen? | Drill-down, correlation |
+| **Predictive** | What will happen? | Forecasting, ML |
+| **Prescriptive** | What should we do? | Optimization, recommendations |
+
+Key vocabulary:
+
+- **Metric / KPI** — a number that measures success, such as revenue, churn, or margin.
+- **Dimension** — a category to slice by, such as date, region, or product.
+- **Measure** — a numeric value to aggregate, such as sales or quantity.
+- **Dashboard** — a compact, visual, at-a-glance view, usually for monitoring.
+- **Report** — a more detailed, often paginated, structured document.
+- **Story** — a guided narrative through data.
+- **Semantic layer / data module** — a curated, business-friendly view over raw tables.
+
+The most common BI failure is a pretty dashboard with no decision attached. Start with the decision, then choose the chart.
+
+### Dashboard design principles
+
+**ELI5:** a good dashboard is a car dashboard — speed, fuel, warnings; not every sensor in the engine.
+
+- Start with the decision, not the chart.
+- One screen, one story; prioritize the top three to five metrics.
+- Put headline KPIs at the top, trends in the middle, detail below.
+- Choose charts by the question:
+  - **Bar / column** — compare categories.
+  - **Line** — trend over time.
+  - **Area** — trend plus volume, used sparingly.
+  - **Scatter** — relationship or correlation.
+  - **Pie / donut** — parts of a whole, only with a few slices.
+  - **Table** — precise values and many fields.
+  - **KPI tile** — one number plus change.
+  - **Map** — geographic patterns.
+- Avoid 3D, gratuitous gradients, and chartjunk.
+- Label axes and units; show the time range.
+- Use color with purpose; highlight exceptions and keep contrast accessible.
+- Sort meaningfully, not alphabetically by default.
+- Show context: targets, previous period, comparisons.
+- Design for the audience: executive, analyst, or operator.
+- Test narrow layouts.
+- Every dashboard needs an owner and a refresh cadence.
+
+### IBM Cognos Analytics
+
+**ELI5:** Cognos is an enterprise BI studio — connect to data, build dashboards, stories, and reports, and share them with governed access.
+
+Cognos authoring modes:
+
+| Mode | Use |
+| :--- | :--- |
+| **Dashboard** | Free-form, interactive, multi-tab |
+| **Story** | Presentation-style narrative with data |
+| **Report** | Structured, paginated reporting |
+| **Exploration** | Ad-hoc visual exploration |
+| **Data module** | Curated data layer over sources |
+| **Dataset** | Saved query result |
+
+Content lives in **Team content** (shared and governed) or **My content** (personal). Data sources include uploaded CSV/Excel files, databases, data modules, packages, and cloud sources.
+
+A typical workflow:
+
+```text
+connect/upload data
+   │
+   ▼
+create or select a data module
+   │
+   ▼
+create a dashboard
+   │
+   ▼
+add visualizations and bind fields
+   │
+   ▼
+add filters and interactions
+   │
+   ▼
+save, share, schedule, export
+```
+
+Useful capabilities: tabs, calculations, filters, drill-through, navigation paths, parameters, conditional formatting, schedules, email delivery, PDF/PowerPoint/Excel export, embedding, and row-level security.
+
+### Google Looker Studio
+
+**ELI5:** Looker Studio is a free, browser-based report builder — connect a data source, drop charts on a page, share a link.
+
+Core objects:
+
+| Object | Meaning |
+| :--- | :--- |
+| **Data source** | Connection plus fields |
+| **Report** | The canvas containing pages and charts |
+| **Page** | A tab within a report |
+| **Chart** | Visualization bound to dimensions and metrics |
+| **Control** | Date range, filter, dropdown, slider, input |
+
+Field types: **dimensions** (blue) and **metrics** (green). Calculated fields create new dimensions or metrics.
+
+**Blending** joins multiple data sources inside one chart. Choose matching join keys and a join type. Keep granularity consistent; blending raw and pre-aggregated data is a common source of wrong totals. For production-grade modeling, join upstream in the warehouse instead.
+
+Controls let the viewer change the view: date range, drop-down, fixed-size list, slider, input box, and buttons. Filters are fixed in the report; controls let the viewer change values.
+
+### Hands-on lab: car-dealership dashboards in Cognos
+
+**Scenario:** you are the regional manager of a car-dealership chain. Build a Sales dashboard and a Service dashboard from the **Auto group** sample data module.
+
+This was the dashboard final assignment. The course pairs Cognos with Looker Studio; the same layout translates between them.
+
+#### Part A — Sales dashboard
+
+Use the tabbed template with four small rectangles on top and one large rectangle below. Rename the tab **Sales**.
+
+| Panel | Visualization | Fields |
+| :--- | :--- | :--- |
+| 1 | KPI | Profit, formatted to one decimal place in millions of USD |
+| 2 | KPI | Quantity sold |
+| 3 | Bar chart | Quantity sold by model |
+| 4 | KPI | Average quantity sold |
+| 5 | Column chart | Profit by dealer ID, sorted ascending |
+
+#### Part B — Service dashboard
+
+Use the 2 x 2 template and rename the tab **Service**.
+
+| Panel | Visualization | Fields |
+| :--- | :--- | :--- |
+| 1 | Column chart | Recalls per model |
+| 2 | Treemap | Customer sentiment: positive, neutral, negative |
+| 3 | Line and column combo | Quantity sold per month versus profit |
+| 4 | Heat map | Recalls by model and affected system |
+
+#### Part C — Export
+
+Use the dashboard's **Share → Export** flow and save as PDF. Include filters if the lab asks for them.
+
+The same report can be rebuilt in Looker Studio:
+
+| Cognos | Looker Studio |
+| :--- | :--- |
+| KPI tile | Scorecard |
+| Bar / column chart | Bar / column chart |
+| Treemap | Treemap |
+| Combo chart | Combo chart |
+| Heat map | Pivot table with heatmap |
+
+For the Looker version, use a calculated field such as `Profit / 1000000` and format it to one decimal place. Select **All pages** when exporting the PDF, or the second page will be missing.
+
+> **Gotcha:** "millions with one decimal place" is a formatting requirement. A raw number like `78402279` will lose marks even if the underlying value is correct.
+
+> **Gotcha:** Profit by dealer ID must be sorted ascending. The default order is not the requirement.
+
+> **Gotcha:** a treemap needs a breakdown dimension (sentiment) and a size measure (review or recall count). Dropping only one field produces an empty-looking chart.
+
+### Hands-on lab: e-commerce dashboard capstone in Cognos
+
+**Scenario:** an e-commerce company has a finished warehouse. Build a dashboard from `ecommerce.csv` with a line chart, a pie chart, and a bar chart.
+
+The file has **68,003 rows**, all sales in 2020, with columns `day`, `month`, `quarter`, `year`, `category`, `item`, and `price`.
+
+#### Step 1 — Load the CSV
+
+Create a new upload in Cognos, choose `ecommerce.csv`, and confirm the data types. The upload becomes a data module named `ecommerce`.
+
+#### Step 2 — Build the charts
+
+| Chart | Fields | Notes |
+| :--- | :--- | :--- |
+| **Line** | Month on the x-axis, sum of price on the y-axis | Filter to 2020 if the tool groups across years |
+| **Pie** | Category and sum of price | Three categories: Ebooks, Electronics, Music |
+| **Bar** | Quarter and sum of price, filtered to `item = Mobile` | There is no "mobile phones" category; filter the item |
+
+Expected monthly totals for 2020:
+
+| Month | Total sales |
+| :--- | ---: |
+| January | 2,143,579 |
+| February | 1,673,807 |
+| March | 1,988,763 |
+| April | 1,866,881 |
+| May | 1,937,700 |
+| June | 1,992,023 |
+| July | 1,975,697 |
+| August | 1,961,923 |
+| September | 1,931,054 |
+| October | 1,974,957 |
+| November | 1,950,553 |
+| December | 1,926,732 |
+
+The grand total is **23,323,669**.
+
+Category totals:
+
+| Category | Total sales |
+| :--- | ---: |
+| Electronics | 22,456,250 |
+| Ebooks | 594,863 |
+| Music | 272,556 |
+
+Mobile quarterly totals:
+
+| Quarter | Total sales |
+| :--- | ---: |
+| Q1 | 1,905,903 |
+| Q2 | 1,953,107 |
+| Q3 | 1,865,315 |
+| Q4 | 1,837,005 |
+
+The mobile filter matches 7,541 rows.
+
+> **Gotcha:** "Mobile phones" is not a category. Filter on `item = Mobile`; the categories are only Ebooks, Electronics, and Music.
+
+> **Gotcha:** if the month axis sorts alphabetically (`1, 10, 11, 12, 2, ...`), change it to numeric order so the line reads chronologically.
+
+> **Gotcha:** confirm that price is aggregated as a sum. A count or average produces numbers that look plausible but are wrong.
+
+### Pitfalls to remember
+
+- **Confusing OLTP and OLAP** — do not run heavy reports against the order-entry database.
+- **Undefined grain** — if one fact row is ambiguous, every measure is ambiguous.
+- **Too many dimensions** — a wide fact table with low-value keys becomes hard to use.
+- **Type 1 SCD when history matters** — overwriting destroys the past.
+- **No conformed dimensions** — the same customer means different things in different marts.
+- **Loading facts before dimensions** — foreign keys fail or facts become orphans.
+- **Non-idempotent loads** — rerunning duplicates data.
+- **Pretty dashboards with no decision** — the most expensive kind of decoration.
+- **Formatting errors** — millions, decimals, sort order, and missing pages are easy marks to lose.
+
+### Series recap
+
+Part 4 connected storage to analysis:
+
+- Warehouses are integrated, historical, non-volatile stores for analytics.
+- Facts hold measures; dimensions hold context; the grain defines the fact row.
+- Star schemas are simple and fast; snowflake schemas normalize dimensions.
+- SCD Type 2 preserves history; surrogate keys make joins stable.
+- Staging, quality checks, and idempotent loads make the warehouse trustworthy.
+- `ROLLUP`, `CUBE`, `GROUPING SETS`, and materialized views precompute summaries.
+- BI turns the warehouse into decisions through KPIs and dashboards.
+- Cognos and Looker Studio share the same workflow: connect, bind fields, visualize, filter, arrange, share.
+
+In **Part 5**, we move the data itself: ETL pipelines with shell scripts, Apache Airflow, and Apache Kafka.
+

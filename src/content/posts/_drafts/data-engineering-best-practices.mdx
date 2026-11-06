@@ -1,0 +1,331 @@
+---
+title: "Data Engineering Best Practices: A Practical Checklist"
+date: "2026-11-03"
+description: "A cross-stack checklist of the data engineering habits that prevent silent bugs: modeling, SQL, pipelines, NoSQL, warehousing, Airflow, Kafka, Spark, ML, and GenAI."
+tags: ["Data Engineering", "Best Practices", "Spark", "Kafka", "SQL"]
+---
+
+This is the review sheet I wish I had while working through the IBM Data Engineering courses. It is not a tutorial. It is the list of habits, defaults, and failure modes that show up again and again across the stack.
+
+> *Note: this is my personal summary of IBM's Data Engineering courses on Coursera. The course materials, labs, and screenshots belong to IBM / Skills Network — everything here is my own beginner-friendly rewrite for learning purposes.*
+
+It pairs with the two condensed posts: [Foundations, SQL, and NoSQL](/blog/data-engineering-condensed-part-1) and [Warehousing, Pipelines, Spark, and GenAI](/blog/data-engineering-condensed-part-2).
+
+---
+
+## How to use this
+
+Treat each section as a pre-flight check. The questions are deliberately blunt because most production incidents are boring: a missing key, a rerun that duplicated data, an unindexed filter, a consumer that fell behind, or a generated query that joined the wrong column.
+
+---
+
+## Data modeling and SQL
+
+### Do
+
+- Give every table a **primary key**.
+- Enforce relationships with **foreign keys**.
+- Use **exact decimals** for money and real date/time types for dates.
+- Normalize first; denormalize only with a measured reason.
+- Index columns used in filters, joins, and sorting.
+- Use **parameterized queries**.
+- Test `UPDATE` and `DELETE` with a `SELECT` using the same `WHERE` first.
+- Read `EXPLAIN` before adding an index.
+- Keep schema changes small, reviewed, and reversible.
+
+### Don't
+
+- Store multiple values in one column.
+- Use strings for dates or numbers.
+- Add an index for every column.
+- Run `UPDATE` or `DELETE` without a `WHERE`.
+- Use `SELECT *` in application queries.
+- Put a function around an indexed column in a filter.
+- Assume `NULL` behaves like an empty string or zero.
+
+### The sargability rule
+
+A predicate is **sargable** when the database can use an index for it.
+
+```sql
+-- Sargable: the column is bare
+WHERE order_date >= DATE '2024-01-01'
+
+-- Usually not sargable: the function hides the column
+WHERE YEAR(order_date) = 2024
+```
+
+If a query is slow, check the plan before rewriting it. The optimizer is usually right about the plan it chose; the problem is usually the query, the statistics, or the data distribution.
+
+---
+
+## Python and pipelines
+
+### Do
+
+- One project, one virtual environment, one pinned `requirements.txt`.
+- Make loads **idempotent**: replace, upsert, or use a batch ID.
+- Validate row counts, schema, nulls, and ranges before and after loading.
+- Log what happened, how long it took, and how many rows moved.
+- Retry transient failures with backoff; fail loudly on permanent ones.
+- Test the transformation functions, not just the happy path.
+- Read secrets from environment variables or a secret manager.
+- Close database connections, preferably with context managers.
+
+### Don't
+
+- Hard-code credentials, hostnames, or paths.
+- Fetch a million rows into pandas when SQL can aggregate first.
+- Catch every exception with a bare `except`.
+- Treat a successful exit code as proof that data loaded.
+- Rerun a pipeline without checking whether the first run committed.
+
+### The smallest useful check
+
+```python
+assert len(df) > 0, "extract returned zero rows"
+assert df["customer_id"].notna().all(), "null customer_id"
+assert df["order_id"].is_unique, "duplicate order_id"
+```
+
+A pipeline that writes zero rows can still "succeed." Make emptiness and nulls explicit failures.
+
+---
+
+## NoSQL
+
+### Do
+
+- Model from the **access pattern** backward.
+- Choose a partition/shard key with high cardinality and even distribution.
+- Keep embedded arrays bounded.
+- Index the fields you actually query.
+- Choose consistency per query when the database allows it.
+- Set TTLs for data that should expire.
+- Test backup and restore.
+- Verify query plans with `explain()` in MongoDB.
+
+### Don't
+
+- Normalize a document store as if it were relational.
+- Force multi-table joins into a database that does not have them.
+- Use a low-cardinality partition key such as `status = 'active'`.
+- Use `ALLOW FILTERING` in Cassandra production queries.
+- Re-import a file without dropping or truncating first.
+- Assume eventual consistency is invisible to users.
+- Store unbounded growth inside one document.
+
+### The MongoDB rule
+
+Embed data that is read together and bounded. Reference data that is shared, large, or changes independently. Duplication is a design choice, not an accident, so decide how it will stay consistent.
+
+---
+
+## Warehouses and BI
+
+### Do
+
+- Declare the **grain** of every fact table.
+- Use conformed dimensions across marts.
+- Load dimensions before facts.
+- Use **SCD Type 2** when history matters.
+- Check nulls, duplicates, orphan facts, and out-of-range values after loading.
+- Precompute repeated heavy aggregations with materialized views.
+- Define metrics once, in a governed semantic layer.
+- Label axes, units, time ranges, and freshness on every dashboard.
+
+### Don't
+
+- Mix grains in one fact table.
+- Overwrite dimension history that the business needs.
+- Build a dashboard with no decision attached.
+- Use a pie chart for fifteen categories.
+- Let every team invent its own definition of "revenue."
+- Assume a fast query is a correct query.
+
+### Dashboard checklist
+
+- One screen, one story.
+- Three to five headline KPIs.
+- The right chart for the question.
+- Consistent colors and accessible contrast.
+- Filters visible and scoped correctly.
+- Owner and refresh cadence documented.
+
+---
+
+## Airflow
+
+### Do
+
+- Keep DAG files inside the `dags/` folder.
+- Keep top-level DAG code light; it runs on every scheduler parse.
+- Make tasks atomic, idempotent, and retryable.
+- Set `retries`, `retry_delay`, and alerts.
+- Use `catchup=False` for new DAGs unless you need backfills.
+- Verify success in the UI, not just the scheduler log.
+- Use pools or concurrency limits to protect shared systems.
+
+### Don't
+
+- Do heavy processing at DAG parse time.
+- Put secrets directly in the DAG file.
+- Use Airflow as a data processing engine.
+- Let one giant task hide where the failure happened.
+- Assume a green DAG means the data is correct; add validation tasks.
+
+```python
+default_args = {
+    "retries": 2,
+    "retry_delay": 300,
+}
+
+with DAG(
+    "daily_etl",
+    default_args=default_args,
+    schedule="@daily",
+    catchup=False,
+    max_active_runs=1,
+) as dag:
+    extract >> transform >> validate >> load
+```
+
+---
+
+## Kafka
+
+### Do
+
+- Set a **key** when per-entity order matters.
+- Size partitions for the read parallelism you need.
+- Commit offsets **after** processing.
+- Monitor consumer lag.
+- Use `acks=all` for durability.
+- Enable the idempotent producer.
+- Use a replication factor of at least three in production.
+- Use a schema registry when producers and consumers evolve independently.
+
+### Don't
+
+- Assume ordering across partitions.
+- Put more consumers than partitions in one group and expect more parallelism.
+- Commit offsets before the work is durably done.
+- Treat Kafka as a database with unlimited retention.
+- Ignore poison messages; route them to a dead-letter topic.
+- Run a local broker in the same terminal as the producer and consumer.
+
+```python
+producer = KafkaProducer(
+    bootstrap_servers="localhost:9092",
+    acks="all",
+    enable_idempotence=True,
+    value_serializer=lambda v: json.dumps(v).encode("utf-8"),
+)
+
+producer.send("orders", key=b"customer-42", value={"order_id": 101})
+producer.flush()
+```
+
+---
+
+## Spark
+
+### Do
+
+- Filter early and select only the columns you need.
+- Use built-in `pyspark.sql.functions` instead of Python UDFs.
+- Broadcast small tables.
+- Fix data skew before adding resources.
+- Tune partition counts to the data and cluster size.
+- Cache only DataFrames that are reused.
+- Use Parquet or ORC, and compact small files.
+- Read the Spark UI before changing memory or cores.
+- Use `explain()` to inspect the physical plan.
+- Persist the whole ML pipeline, not just the estimator.
+
+### Don't
+
+- Call `collect()` on a large DataFrame.
+- Use `groupByKey` when `reduceByKey` will do.
+- Cache everything and never unpersist.
+- Add executors to fix a skewed partition.
+- Assume more partitions always means faster.
+- Ignore spills, GC time, and failed tasks.
+- Write thousands of tiny output files.
+
+### Starting configuration
+
+```bash
+spark-submit \
+  --master yarn \
+  --deploy-mode cluster \
+  --executor-memory 4g \
+  --executor-cores 2 \
+  --num-executors 10 \
+  --conf spark.sql.shuffle.partitions=200 \
+  --conf spark.sql.adaptive.enabled=true \
+  app.py
+```
+
+The right values depend on the data and cluster. Measure first; copy-pasting someone else's numbers is how you get an expensive, slow cluster.
+
+---
+
+## ML and GenAI
+
+### Do
+
+- Split before scaling or imputing; fit transformers on training data only.
+- Evaluate on held-out data and report more than one metric.
+- Compare against a simple baseline.
+- Version data, code, parameters, and the saved pipeline.
+- Provide the schema and business definitions in prompts.
+- Ask the model for assumptions, edge cases, and tests.
+- Validate generated SQL and code against the real schema.
+- Keep raw PII out of public models.
+- Require human sign-off for irreversible or high-stakes actions.
+
+### Don't
+
+- Leak test data into training.
+- Report accuracy on an imbalanced classification problem.
+- Save only the estimator and lose the preprocessing steps.
+- Trust generated SQL because it runs.
+- Run generated `DROP`, `DELETE`, or `TRUNCATE` without review.
+- Treat a fluent answer as a correct answer.
+- Assume a model trained on one Spark version will load on another.
+
+### GenAI output review
+
+```text
+1. Does every table and column exist?
+2. Are the join keys correct?
+3. Does the filter match the business definition?
+4. Is the aggregation grain right?
+5. Do row counts and totals make sense?
+6. Is the plan acceptable?
+7. Are security, privacy, and cost reviewed?
+```
+
+---
+
+## Production checklist
+
+- [ ] Every table has a documented key and grain.
+- [ ] Pipelines are idempotent and safe to rerun.
+- [ ] Inputs and outputs are validated, not just assumed.
+- [ ] Failures retry, alert, and leave a useful log.
+- [ ] Backups exist and a restore has been tested.
+- [ ] Access follows least privilege and is reviewed.
+- [ ] PII is classified, minimized, and protected.
+- [ ] Schema changes are versioned and reversible.
+- [ ] Dashboards have an owner and a refresh cadence.
+- [ ] Kafka lag and Spark job health are monitored.
+- [ ] ML models are versioned and monitored for drift.
+- [ ] Generated code and SQL are reviewed before execution.
+- [ ] Cost is visible and owned.
+- [ ] There is a runbook for the on-call human.
+
+The through-line: **make the correct behavior the default, and make the incorrect behavior loud.** Most of these items are cheap to add at design time and expensive to reconstruct after an incident.
+
+Back to [Part 1](/blog/data-engineering-condensed-part-1) or [Part 2](/blog/data-engineering-condensed-part-2).

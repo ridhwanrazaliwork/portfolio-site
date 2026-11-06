@@ -1,0 +1,918 @@
+---
+title: "Learning Data Engineering Part 3: NoSQL Databases"
+date: "2026-11-05"
+description: "Beginner-friendly notes on document, key-value, wide-column, graph, and vector databases, with MongoDB and Cassandra labs."
+tags: ["NoSQL", "MongoDB", "Cassandra", "Data Modeling"]
+---
+
+This is Part 3 of my notes on the **IBM Data Engineering Professional Certificate**. Part 2 was the relational world: tables, keys, SQL, and database administration. This part is the other half of the storage story: **NoSQL**.
+
+The short version: NoSQL is not "better than SQL." It is a set of tradeoffs. You give up some guarantees, joins, and ad-hoc query power in exchange for flexibility, scale, or a data shape that fits the problem better.
+
+> *Note: this series is my personal summary of IBM's Data Engineering courses on Coursera. The course materials, labs, and screenshots in these posts belong to IBM / Skills Network — everything here is my own beginner-friendly rewrite for learning purposes.*
+
+The two databases with hands-on labs are **MongoDB** (document) and **Cassandra** (wide-column). The same modeling instincts apply to the others: start from the access pattern, not from a normalized diagram.
+
+---
+
+## Chapter 1 — Why NoSQL exists
+
+### The toolbox, not the religion
+
+**ELI5:** NoSQL is a toolbox, not one tool — when a spreadsheet is the wrong shape, you reach for a different box.
+
+**NoSQL** means "not only SQL": a family of databases that do not require fixed relational tables. It was born from web-scale needs: huge volumes, rapid change, many servers, and flexible data.
+
+It is not anti-SQL. Many NoSQL databases have their own query languages, and some support SQL-like interfaces.
+
+| Family | Data shape | Examples |
+| :--- | :--- | :--- |
+| **Key-value** | A key mapped to a value | Redis, DynamoDB, Riak |
+| **Document** | JSON-like documents in collections | MongoDB, CouchDB, Firestore |
+| **Column-family / wide-column** | Rows with grouped, sparse columns | Cassandra, HBase, ScyllaDB |
+| **Graph** | Nodes and edges with properties | Neo4j, Neptune, JanusGraph |
+| **Vector** | Embeddings plus metadata | Pinecone, Milvus, Weaviate, pgvector |
+
+**Polyglot persistence** is the idea that one system can use different databases for different jobs: a relational database for payments, Redis for sessions, MongoDB for product catalogs, and a warehouse for analytics.
+
+### Characteristics and tradeoffs
+
+**ELI5:** NoSQL databases are built to bend instead of break — flexible shape, many machines, always on.
+
+Common characteristics:
+
+- **Schema-flexible** — documents and rows can differ; no `ALTER TABLE` for every change.
+- **Distributed by design** — data spreads across nodes; scale out by adding machines.
+- **High availability** — replicas and failover keep serving during failures.
+- **Partition tolerance** — keeps working when the network splits.
+- **Eventual consistency** — replicas converge over time.
+- **Denormalization-friendly** — duplicate data to avoid joins.
+- **Limited joins** — relationships are modeled into the data or handled in application code.
+- **Schema-on-read** — structure is interpreted when data is read.
+
+The weaknesses are real too:
+
+- Weaker ad-hoc querying.
+- Eventual consistency surprises.
+- Data duplication that must be kept in sync.
+- Less mature tooling in some ecosystems.
+- A different operational skill set from SQL.
+
+Choose based on **access patterns**, not hype.
+
+### Quick chooser
+
+**ELI5:** match the box to the thing you are storing.
+
+| Need | Likely type |
+| :--- | :--- |
+| Cache, session, ultra-fast key lookup | Key-value |
+| Flexible JSON app data | Document |
+| Massive writes, time-series, IoT | Column-family |
+| Relationship-heavy queries | Graph |
+| Similarity search over embeddings | Vector |
+| Strict multi-row transactions and complex joins | Probably relational |
+
+### Deployment options
+
+**ELI5:** you can keep the database in your own garage, rent a managed locker, or use a fully serviced warehouse.
+
+| Option | Who operates it | Tradeoff |
+| :--- | :--- | :--- |
+| **Self-managed on-premises** | You | Maximum control, maximum work |
+| **Self-managed in the cloud (IaaS)** | You, on cloud VMs | Control with cloud infrastructure |
+| **Managed service (DBaaS)** | Provider handles backups, patching, scaling | Convenience, less control |
+| **Serverless** | Provider, pay per request | Elastic, can be expensive at steady load |
+| **Containerized / Kubernetes** | You, with orchestration | Portable, more operational complexity |
+
+Managed examples include MongoDB Atlas, Amazon DynamoDB, Azure Cosmos DB, and Astra DB.
+
+### ACID versus BASE
+
+**ELI5:** ACID is a strict bank teller — every transaction is all-or-nothing. BASE is a busy market — you get an answer now, and it settles soon.
+
+| ACID | BASE |
+| :--- | :--- |
+| **Atomicity** — all or nothing | **Basically Available** — the system responds during failures |
+| **Consistency** — valid state to valid state | **Soft state** — state may change without new input |
+| **Isolation** — concurrent transactions do not interfere | **Eventually consistent** — replicas converge |
+| **Durability** — committed data survives crashes | |
+
+ACID prioritizes correctness. BASE prioritizes availability and scale. Many modern systems let you tune consistency per operation, such as Cassandra's quorum reads and writes.
+
+**NewSQL** systems try to offer ACID guarantees at distributed scale. The practical question is: what does a stale read cost compared with downtime?
+
+### Distributed databases and CAP
+
+**ELI5:** one database is a single shop; a distributed database is a chain — many branches, shared rules, and a plan for when one branch closes.
+
+A **distributed database** stores data across multiple nodes.
+
+- **Replication** — copies of data on multiple nodes. Improves read throughput, availability, and disaster recovery, but raises consistency questions.
+- **Sharding / partitioning** — split data across nodes by a key. Improves write scalability and storage capacity, but risks **hot partitions** if the key is skewed.
+- **Replica set** (MongoDB) — primary plus secondaries with automatic failover.
+- **Ring / cluster** (Cassandra) — peer-to-peer nodes with no single master.
+- **Quorum** — a majority of replicas must acknowledge a read or write.
+
+The **CAP theorem** says a distributed system cannot guarantee all three of Consistency, Availability, and Partition tolerance at once. In a distributed system, partitions happen, so the real choice is **CP versus AP** during a partition.
+
+| Choice | Behavior during a partition | Examples |
+| :--- | :--- | :--- |
+| **CP** | Refuse some requests to stay consistent | HBase, MongoDB with majority reads/writes |
+| **AP** | Keep serving, accept temporary inconsistency | Cassandra, DynamoDB |
+
+**PACELC** extends CAP: even without a partition, you choose between latency and consistency.
+
+CAP describes the moment of partition, not normal operation. Real systems are often tunable, with consistency as a dial rather than a binary.
+
+### Migrating from RDBMS to NoSQL
+
+**ELI5:** moving from a rigid warehouse to flexible boxes means redesigning the shelves — you cannot just carry the old shelves over.
+
+Migration is a redesign, not a lift-and-shift:
+
+| Relational habit | NoSQL habit |
+| :--- | :--- |
+| Normalize to reduce duplication | Denormalize to serve reads |
+| Join tables at query time | Embed data or join in application code |
+| Model entities | Model access patterns |
+| Strong multi-row transactions | Scoped transactions, idempotency, compensating actions |
+| Ad-hoc SQL reporting | Purpose-built queries plus a warehouse for analytics |
+
+Other considerations: application changes, data cleansing, dual-write and backfill, cutover planning, team skills, and vendor lock-in.
+
+Do not migrate because NoSQL is trendy. Migrate a bounded use case with a clear access pattern. If you need strong transactional integrity, complex joins, and mature SQL reporting, a relational database is often the right answer.
+
+### Relational versus document modeling
+
+**ELI5:** relational modeling spreads facts across linked tables; document modeling packs a whole order into one envelope.
+
+Relational:
+
+```text
+customers ──< orders ──< order_items >── products
+```
+
+Document:
+
+```json
+{
+  "order_id": 101,
+  "customer": { "name": "Ada", "email": "ada@example.com" },
+  "items": [
+    { "product": "Pen", "price": 1.5, "qty": 10 },
+    { "product": "Notebook", "price": 3.0, "qty": 2 }
+  ],
+  "shipping": { "city": "London", "postcode": "..." }
+}
+```
+
+**Embed** when data is accessed together, child data is small and bounded, and you want one round trip.
+
+**Reference** when data is large or unbounded, shared across many parents, or changes independently.
+
+Duplication is intentional in document databases. You keep copies consistent through application logic or periodic jobs.
+
+Common MongoDB design patterns:
+
+| Pattern | Use |
+| :--- | :--- |
+| **Embedded document** | One-to-few relationships |
+| **Extended reference** | Copy frequently accessed fields |
+| **Subset** | Keep a small hot list in the parent |
+| **Bucket** | Group time-series events into buckets |
+| **Computed** | Precompute aggregates |
+| **Schema versioning** | Track document shape changes |
+| **Polymorphic** | One collection, different shapes by type |
+
+The rule: model for reads, then verify the write patterns.
+
+---
+
+## Chapter 2 — MongoDB
+
+### Documents, collections, and databases
+
+**ELI5:** MongoDB is a cabinet of folders — each folder (collection) holds documents, and each document can have its own shape.
+
+- **Document** — a BSON (binary JSON) record.
+- **Collection** — a group of documents, like a table but schema-flexible.
+- **Database** — a container of collections.
+- `_id` — the unique document identifier; MongoDB generates an `ObjectId` if you do not supply one.
+
+MongoDB fits content management, product catalogs, user profiles, event logs, mobile backends, and IoT data. It is less suited to heavy multi-table transactions, complex joins, and strict relational reporting.
+
+### CRUD
+
+**ELI5:** create a document, read it, change it, delete it — the four basic moves.
+
+```javascript
+// Create
+db.users.insertOne({ name: "Ada", age: 36, tags: ["math", "code"] })
+db.users.insertMany([{ name: "Ali" }, { name: "Sara" }])
+
+// Read
+db.users.find({ age: { $gt: 30 } })
+db.users.find({ tags: "code" }, { name: 1, _id: 0 })
+db.users.findOne({ name: "Ada" })
+
+// Update
+db.users.updateOne({ name: "Ada" }, { $set: { age: 37 } })
+db.users.updateMany({}, { $inc: { visits: 1 } })
+db.users.updateOne({ name: "Ada" }, { $push: { tags: "ai" } })
+
+// Delete
+db.users.deleteOne({ name: "Ali" })
+db.users.deleteMany({ age: { $lt: 18 } })
+```
+
+Useful query operators:
+
+| Operator | Meaning |
+| :--- | :--- |
+| `$eq`, `$ne` | Equal, not equal |
+| `$gt`, `$gte`, `$lt`, `$lte` | Comparison |
+| `$in`, `$nin` | Match any / none in a list |
+| `$exists` | Field exists |
+| `$regex` | Pattern match |
+| `$and`, `$or`, `$not` | Logical combination |
+| `$elemMatch` | Match multiple conditions in an array element |
+
+Useful update operators: `$set`, `$unset`, `$inc`, `$push`, `$pull`, `$addToSet`, `$rename`, `$mul`.
+
+Projection uses `{ field: 1 }` to include and `{ field: 0 }` to exclude. Cursor methods include `.sort()`, `.limit()`, `.skip()`, and `.countDocuments()`. An **upsert** creates the document if it does not exist.
+
+### Indexes
+
+**ELI5:** an index is the book's index — instead of scanning every page, jump to the right entry.
+
+Without an index, MongoDB scans every document (a collection scan).
+
+| Index type | Use |
+| :--- | :--- |
+| **Single-field** | `db.users.createIndex({ name: 1 })` |
+| **Compound** | `db.users.createIndex({ age: 1, name: -1 })` |
+| **Unique** | Enforce uniqueness |
+| **Multikey** | Automatically used for array fields |
+| **Text** | Full-text search |
+| **TTL** | Auto-delete documents after a time |
+| **Geospatial** | Location queries |
+| **Partial** | Index only matching documents |
+
+`explain()` shows whether a query used an index (`IXSCAN`) or scanned the collection (`COLLSCAN`). Indexes speed reads and slow writes, so index the query patterns you actually use.
+
+### Aggregation
+
+**ELI5:** an assembly line for documents — filter, group, reshape, and compute in stages.
+
+A **pipeline** is an array of stages. Each stage transforms the stream of documents.
+
+| Stage | Purpose |
+| :--- | :--- |
+| `$match` | Filter, like `WHERE` |
+| `$project` | Select and reshape fields |
+| `$group` | Aggregate by key |
+| `$sort` | Order |
+| `$limit`, `$skip` | Paginate |
+| `$unwind` | Flatten an array into multiple documents |
+| `$lookup` | Left join to another collection |
+| `$count` | Count documents |
+| `$addFields` / `$set` | Add computed fields |
+| `$facet` | Run multiple pipelines on the same input |
+
+Accumulators include `$sum`, `$avg`, `$min`, `$max`, `$push`, `$addToSet`, `$first`, and `$last`.
+
+```javascript
+db.orders.aggregate([
+  { $match: { status: "completed" } },
+  { $unwind: "$items" },
+  { $group: {
+      _id: "$items.product",
+      total: { $sum: { $multiply: ["$items.price", "$items.qty"] } },
+      orders: { $sum: 1 }
+  }},
+  { $sort: { total: -1 } },
+  { $limit: 5 }
+])
+```
+
+Aggregation is how you do SQL-style reporting in MongoDB. `$lookup` is a join, but it can be expensive; denormalization is often better.
+
+### Replication and sharding
+
+**ELI5:** replication makes copies so one crash does not lose data; sharding splits the data so one machine is not overwhelmed.
+
+A **replica set** is a group of MongoDB servers holding the same data:
+
+- **Primary** — accepts writes.
+- **Secondaries** — replicate the primary's **oplog** and can serve reads.
+- **Automatic failover** — a secondary is elected primary if the primary dies.
+- **Write concern** — how many nodes must confirm a write.
+- **Read preference** — primary, secondary, nearest, and so on.
+
+**Sharding** partitions data across shards:
+
+- **Shard key** — the field or fields used to distribute documents.
+- **Config servers** — store cluster metadata.
+- `mongos` — query router.
+- **Balancer** — moves chunks to keep shards even.
+
+A bad shard key has low cardinality, is monotonically increasing, or is skewed, producing a hot shard. A good shard key has high cardinality, distributes evenly, and matches common queries.
+
+### PyMongo
+
+**ELI5:** PyMongo is the remote control — Python sends commands and gets documents back as dictionaries.
+
+```python
+from pymongo import MongoClient
+
+client = MongoClient("mongodb://localhost:27017/")
+db = client["shop"]
+users = db["users"]
+
+users.insert_one({"name": "Ada", "age": 36})
+users.insert_many([{"name": "Ali"}, {"name": "Sara"}])
+
+for doc in users.find({"age": {"$gt": 30}}):
+    print(doc)
+
+users.update_one({"name": "Ada"}, {"$set": {"age": 37}})
+users.delete_one({"name": "Ali"})
+
+pipeline = [{"$group": {"_id": "$age", "count": {"$sum": 1}}}]
+for row in users.aggregate(pipeline):
+    print(row)
+
+client.close()
+```
+
+Databases and collections are created lazily when you first write data. Use environment variables for connection strings. PyMongo is synchronous; Motor is the async variant.
+
+### Hands-on lab: movie analysis in MongoDB
+
+**Scenario:** import a JSON-lines file of movies, query it, aggregate it, and export a subset to CSV.
+
+This was the MongoDB half of the NoSQL final assignment.
+
+#### Step 1 — Import the data
+
+```bash
+mongoimport --host <host>:27017 \
+  -u root -p \
+  --authenticationDatabase admin \
+  --db entertainment \
+  --collection movies \
+  --file movies.json
+```
+
+Expected result: **100 documents imported**.
+
+The file is one JSON document per line. Do not add `--jsonArray`; that option expects a single JSON array and will fail on JSON-lines.
+
+Verify inside `mongosh`:
+
+```javascript
+use entertainment
+db.movies.countDocuments()
+db.movies.findOne()
+```
+
+#### Step 2 — Find the year with the most releases
+
+```javascript
+db.movies.aggregate([
+  { $group: { _id: "$year", count: { $sum: 1 } } },
+  { $sort: { count: -1 } },
+  { $limit: 1 }
+])
+```
+
+The result for this dataset is `2016` with `74` movies.
+
+#### Step 3 — Count movies after 1999
+
+```javascript
+db.movies.find({ year: { $gt: 1999 } }).count()
+```
+
+The result is **99**. Only one movie in the dataset is older than 2000.
+
+#### Step 4 — Average votes in 2007
+
+```javascript
+db.movies.aggregate([
+  { $match: { year: 2007 } },
+  { $group: { _id: "$year", averageVotes: { $avg: "$Votes" } } }
+])
+```
+
+The result is **192.5**. Field names are case-sensitive: `Votes` with a capital V is not the same as `votes`.
+
+#### Step 5 — Export selected fields
+
+```bash
+mongoexport --host <host>:27017 \
+  -u root -p \
+  --authenticationDatabase admin \
+  --db entertainment \
+  --collection movies \
+  --type=csv \
+  --fields=_id,title,year,rating,Director \
+  --out=partial_data.csv
+```
+
+The export contains 100 records. The capital `Director` matches the document field; a lowercase `director` would produce an empty column.
+
+> **Gotcha:** `movies.json` is JSON-lines, not a JSON array. `--jsonArray` is the wrong option here.
+
+> **Gotcha:** field names are case-sensitive. `Votes`, `Director`, and `Description` are capitalized in this dataset; `title`, `year`, and `rating` are lowercase.
+
+> **Version note:** the Toolbox host and credentials change every session. Always copy the current connection details instead of reusing an old command.
+
+---
+
+### Hands-on lab: product catalog capstone in MongoDB
+
+**Scenario:** an e-commerce company stores its product catalog in MongoDB. Import the catalog, inspect it, index it, answer a few business questions, and export a CSV.
+
+#### Step 1 — Import the catalog
+
+```bash
+mongoimport --host <host>:27017 \
+  -u root -p \
+  --authenticationDatabase admin \
+  --db catalog \
+  --collection electronics \
+  --file catalog.json
+```
+
+Expected result: **438 documents imported**.
+
+The file is JSON-lines, so again, no `--jsonArray`.
+
+#### Step 2 — Inspect the database and collection
+
+```javascript
+show dbs
+use catalog
+show collections
+```
+
+You should see the `catalog` database and the `electronics` collection.
+
+#### Step 3 — Index the type field
+
+```javascript
+db.electronics.createIndex({ type: 1 })
+```
+
+The index is named `type_1`.
+
+#### Step 4 — Answer catalog questions
+
+Count laptops:
+
+```javascript
+db.electronics.find({ type: "laptop" }).count()
+```
+
+The result is **389**.
+
+Count smart phones with a 6-inch screen:
+
+```javascript
+db.electronics.find({ type: "smart phone", "screen size": 6 }).count()
+```
+
+The result is **8**. The field name contains a space, so it must be quoted.
+
+Average smart-phone screen size:
+
+```javascript
+db.electronics.aggregate([
+  { $match: { type: "smart phone" } },
+  { $group: { _id: null, averageScreenSize: { $avg: "$screen size" } } }
+])
+```
+
+The result is **6.0**.
+
+#### Step 5 — Export a CSV
+
+```bash
+mongoexport --host <host>:27017 \
+  -u root -p \
+  --authenticationDatabase admin \
+  --db catalog \
+  --collection electronics \
+  --type=csv \
+  --fields=_id,type,model \
+  --out=electronics.csv
+```
+
+Expected result: **438 records exported**.
+
+> **Gotcha:** `"screen size"` contains a space. Use the quoted field name in both queries and aggregation paths.
+
+> **Gotcha:** re-importing the same file creates new documents with new `_id` values. Drop the collection first if you want a clean re-import.
+
+---
+
+## Chapter 3 — Apache Cassandra
+
+### The ring, not the hierarchy
+
+**ELI5:** Cassandra is a ring of equal workers — no boss, every node can take requests, and data is copied around the ring.
+
+**Apache Cassandra** is a distributed, wide-column NoSQL database built for high write throughput and availability.
+
+- **Peer-to-peer** — no master; every node is equal.
+- **Ring architecture** — nodes are arranged in a ring; data is distributed by **consistent hashing**.
+- **Gossip protocol** — nodes share state and detect failures.
+- **Linear scalability** — add nodes for more throughput and storage.
+- **High availability** — no single point of failure.
+- **Tunable consistency** — quorum settings per query.
+- **Write-optimized** — writes go to a commit log and memtable, then flush to immutable SSTables.
+- **Eventually consistent** — replicas converge through hinted handoff, read repair, and anti-entropy.
+
+It fits IoT telemetry, time-series, messaging, recommendations, activity feeds, and fraud detection. It does not fit ad-hoc analytics, joins, frequent schema changes, or tiny datasets.
+
+### Architecture
+
+**ELI5:** data is placed on a ring by a hash of its key, copied to neighbors, and repaired when a node returns.
+
+| Concept | Meaning |
+| :--- | :--- |
+| **Node** | One Cassandra server |
+| **Cluster** | All nodes |
+| **Data center** | A group of nodes |
+| **Rack** | A failure domain inside a data center |
+| **Partition key** | Hashed to determine which node owns the data |
+| **Replication factor (RF)** | Number of copies of each partition |
+
+Replication strategies:
+
+- **SimpleStrategy** — one data center, clockwise placement. Development only.
+- **NetworkTopologyStrategy** — rack- and data-center-aware. Production.
+
+**Consistent hashing** minimizes data movement when nodes join or leave. **Virtual nodes (vnodes)** give each node many small ranges for better balance.
+
+The write path is a useful mental model:
+
+```text
+write
+  │
+  ▼
+commit log  ──► durable, append-only
+  │
+  ▼
+memtable    ──► in-memory sorted structure
+  │
+  ▼ (flush)
+SSTable     ──► immutable file on disk
+  │
+  ▼
+compaction  ──► merges SSTables
+```
+
+Other pieces:
+
+- **Bloom filters** speed up lookups by ruling out SSTables that cannot contain a key.
+- **Hinted handoff** holds writes for a temporarily down node.
+- **Read repair** fixes stale replicas during reads.
+- **Node repair** (`nodetool repair`) runs anti-entropy to sync replicas.
+- **Tombstones** are deletion markers. Too many of them hurt read performance.
+- **Compaction strategies** include SizeTiered, Leveled, and TimeWindow (useful for time-series).
+
+### The Cassandra data model
+
+**ELI5:** a table is a giant sorted map — the partition key picks the shelf, and clustering columns order the items on that shelf.
+
+- **Keyspace** — a container of tables; defines replication.
+- **Table** — rows organized by a primary key.
+- **Primary key** = **partition key** + optional **clustering columns**.
+
+```sql
+-- One partition key
+PRIMARY KEY (user_id)
+
+-- Composite partition key plus clustering
+PRIMARY KEY ((user_id, year), month)
+```
+
+| Key part | Job |
+| :--- | :--- |
+| **Partition key** | Hashed to a node; determines data locality. Choose high cardinality. |
+| **Clustering columns** | Sort order within a partition; support range queries |
+
+Cassandra is **query-first**: start with the question, then design the table. There are no joins, so you denormalize and often keep one table per query pattern.
+
+Rules that prevent pain:
+
+- Avoid hot partitions. A low-cardinality key such as `status = 'active'` puts too much data and traffic in one place.
+- Keep partitions bounded. Extremely wide partitions are slow.
+- Avoid `ALLOW FILTERING` in production; it usually means the table does not match the query.
+- Use TTL for data that should expire.
+- Design to avoid mass deletes; tombstones are expensive.
+- Tune consistency per query with `ONE`, `QUORUM`, `ALL`, or `LOCAL_QUORUM`.
+
+### CQL types
+
+**ELI5:** CQL has its own set of boxes — numbers, text, time, IDs, and collections.
+
+| Family | Types |
+| :--- | :--- |
+| **Text** | `text`, `varchar`, `ascii` |
+| **Numeric** | `int`, `bigint`, `smallint`, `tinyint`, `varint`, `float`, `double`, `decimal` |
+| **Boolean** | `boolean` |
+| **Time** | `timestamp`, `date`, `time`, `duration` |
+| **Identifiers** | `uuid`, `timeuuid` |
+| **Binary** | `blob` |
+| **Collections** | `list<T>`, `set<T>`, `map<K,V>`, `tuple<...>` |
+
+`frozen` treats a collection or user-defined type as a single immutable value. Counters have special rules. UDTs let you define composite types. You can also insert JSON directly.
+
+### Keyspaces, tables, and CRUD
+
+**ELI5:** CQL looks like SQL, but the rules are different — `INSERT` can overwrite, and queries must fit the key.
+
+```sql
+CREATE KEYSPACE entertainment
+WITH replication = {
+  'class': 'SimpleStrategy',
+  'replication_factor': 1
+};
+
+USE entertainment;
+```
+
+```sql
+CREATE TABLE movies (
+  "_id" text PRIMARY KEY,
+  title text,
+  year text,
+  rating text,
+  director text
+);
+```
+
+```sql
+-- Insert is an upsert
+INSERT INTO movies ("_id", title, year, rating, director)
+VALUES ('m1', 'Example', '2020', 'PG', 'Ada');
+
+-- Query by the primary key
+SELECT * FROM movies WHERE "_id" = 'm1';
+
+-- Update also inserts if the row does not exist
+UPDATE movies SET rating = 'G' WHERE "_id" = 'm1';
+
+-- Delete
+DELETE FROM movies WHERE "_id" = 'm1';
+```
+
+Important differences from SQL:
+
+- `INSERT` is an **upsert**.
+- `UPDATE` can create a row.
+- There are no joins, no arbitrary `GROUP BY`, and no subqueries like SQL.
+- `WHERE` must respect the primary key: partition key equality, then clustering ranges.
+- Batches are atomic per partition, not a full ACID transaction across partitions.
+- `cqlsh` is the CQL shell; statements end with `;`.
+
+### Hands-on lab: movies in Cassandra
+
+**Scenario:** take the CSV exported from MongoDB and load it into Cassandra, then query and index it.
+
+This was the Cassandra half of the NoSQL final assignment.
+
+#### Step 1 — Create the keyspace
+
+```sql
+CREATE KEYSPACE entertainment
+WITH replication = {
+  'class': 'SimpleStrategy',
+  'replication_factor': 1
+};
+
+DESCRIBE KEYSPACE entertainment;
+```
+
+The lab expects `SimpleStrategy` with replication factor 1.
+
+#### Step 2 — Create the table
+
+The CSV columns are `_id`, `title`, `year`, `rating`, and `director`. All are stored as text in this exercise.
+
+```sql
+USE entertainment;
+
+CREATE TABLE movies (
+    "_id" text PRIMARY KEY,
+    title text,
+    year text,
+    rating text,
+    director text
+);
+```
+
+The `_id` column must be double-quoted because Cassandra identifiers cannot start with an underscore. An unquoted `_id` is a syntax error.
+
+#### Step 3 — Import the CSV
+
+Run `cqlsh` from the directory containing `partial_data.csv`:
+
+```sql
+COPY entertainment.movies ("_id", title, year, rating, director)
+FROM 'partial_data.csv'
+WITH DELIMITER = ',' AND HEADER = TRUE;
+```
+
+Expected result: **100 rows processed**.
+
+If a previous attempt half-imported the data, truncate the table before retrying. Otherwise the count will be wrong.
+
+#### Step 4 — Count and index
+
+```sql
+SELECT COUNT(*) FROM entertainment.movies;
+```
+
+Expected result: **100**.
+
+```sql
+CREATE INDEX IF NOT EXISTS rating_index
+ON entertainment.movies (rating);
+```
+
+Then:
+
+```sql
+SELECT COUNT(*) FROM entertainment.movies WHERE rating = 'G';
+```
+
+Expected result: **32**. The rest of the dataset is unrated.
+
+> **Gotcha:** `_id` must be quoted in both `CREATE TABLE` and the `COPY` column list, or renamed to something like `id`.
+
+> **Gotcha:** re-running `COPY` after a partial failure can duplicate rows. `TRUNCATE` first, then re-import.
+
+> **Gotcha:** `cqlsh` resolves the CSV path relative to the directory where it was started. Run it from the folder that contains the file.
+
+> **Version note:** Cassandra index syntax and `COPY` options vary slightly by version. The modeling ideas are stable.
+
+---
+
+## Chapter 4 — Vector databases
+
+### Finding similar things
+
+**ELI5:** a vector database is a "find similar things" machine — it stores numbers representing meaning and returns the closest matches.
+
+An **embedding** is a numeric vector representing the meaning of text, an image, or audio. A **vector database** stores vectors plus metadata and supports similarity search.
+
+| Distance metric | Intuition |
+| :--- | :--- |
+| **Cosine similarity** | Compare direction; length-blind |
+| **Euclidean (L2)** | Compare geometric distance |
+| **Dot product** | Direction plus magnitude |
+
+**Approximate nearest neighbor (ANN)** search is fast but not guaranteed to find the mathematically exact nearest vector. Common index types are **HNSW**, **IVF**, and **PQ** (product quantization).
+
+Use cases:
+
+- Semantic search.
+- Retrieval-augmented generation (RAG) for LLMs.
+- Image similarity.
+- Recommendations.
+- Deduplication and clustering.
+
+A RAG flow looks like this:
+
+```text
+documents
+   │
+   ▼
+chunking
+   │
+   ▼
+embedding model
+   │
+   ▼
+vector database
+   │
+   ▼ (top-k)
+retrieved chunks
+   │
+   ▼
+LLM context
+```
+
+**Metadata filtering** combines similarity with structured filters such as date, category, or tenant.
+
+The tradeoffs are recall versus speed versus memory. Changing the embedding model usually means re-indexing the whole collection. Examples include Pinecone, Milvus, Weaviate, Qdrant, pgvector, and FAISS (a library rather than a database).
+
+### One-page recap
+
+**ELI5:** the whole part in one breath.
+
+- NoSQL is a toolbox: key-value, document, column-family, graph, and vector.
+- It trades strict consistency and joins for flexibility, scale, and availability.
+- ACID prioritizes correctness; BASE prioritizes availability and eventual consistency.
+- CAP is about behavior during a network partition; PACELC adds latency versus consistency.
+- MongoDB stores documents in collections, with CRUD, indexes, aggregation pipelines, replica sets, and sharding.
+- Cassandra is a peer-to-peer ring with partition and clustering keys, tunable consistency, and query-first modeling.
+- Vector databases find similar embeddings and power semantic search and RAG.
+- Model for access patterns, denormalize on purpose, and avoid joins you cannot afford.
+
+### Mini cheat sheet
+
+#### MongoDB shell
+
+```javascript
+db.users.insertOne({ name: "Ada", age: 36 })
+db.users.find({ age: { $gt: 30 } }).sort({ age: -1 }).limit(5)
+db.users.updateOne({ name: "Ada" }, { $set: { age: 37 } })
+db.users.deleteOne({ name: "Ali" })
+db.users.createIndex({ name: 1 }, { unique: true })
+
+db.users.aggregate([
+  { $match: { age: { $gt: 18 } } },
+  { $group: { _id: "$city", count: { $sum: 1 } } }
+])
+```
+
+#### PyMongo
+
+```python
+from pymongo import MongoClient
+
+client = MongoClient("mongodb://localhost:27017/")
+col = client["shop"]["users"]
+
+col.insert_one({"name": "Ada"})
+list(col.find({"age": {"$gt": 30}}))
+col.update_one({"name": "Ada"}, {"$set": {"age": 37}})
+col.delete_one({"name": "Ada"})
+
+client.close()
+```
+
+#### CQL
+
+```sql
+CREATE KEYSPACE shop
+WITH replication = {
+  'class': 'NetworkTopologyStrategy',
+  'datacenter1': 3
+};
+
+USE shop;
+
+CREATE TABLE events (
+  user_id uuid,
+  event_time timestamp,
+  event_type text,
+  PRIMARY KEY (user_id, event_time)
+);
+
+INSERT INTO events (user_id, event_time, event_type)
+VALUES (uuid(), toTimestamp(now()), 'login');
+
+SELECT * FROM events WHERE user_id = ?;
+```
+
+#### Decision rules
+
+| If you need... | Choose... |
+| :--- | :--- |
+| Flexible JSON plus rich queries | Document |
+| Microsecond key lookups and caching | Key-value |
+| Huge write volume and time-series | Column-family |
+| Relationship traversal | Graph |
+| "Similar to this" search | Vector |
+| Strict multi-row transactions and complex joins | Relational |
+
+### Pitfalls to remember
+
+- **Relational habits** — normalizing and joining in a document store usually makes reads slower and code more complex.
+- **Unbounded arrays** — documents have size limits; do not embed an ever-growing list.
+- **Hot partitions** — a low-cardinality partition key concentrates traffic on one node.
+- **Case-sensitive fields** — MongoDB field names are case-sensitive; wrong casing returns empty results, not errors.
+- **Wrong import mode** — JSON-lines is not a JSON array; CSV headers need the right option.
+- **Untuned consistency** — `ALL` is slow, `ONE` can be stale. Choose per query.
+- **No backups** — distributed does not mean indestructible.
+- **Vector search without evaluation** — measure recall and relevance; "it returns results" is not quality.
+
+### Series recap
+
+Part 3 was about choosing the right storage shape:
+
+- NoSQL is a family of tradeoffs, not a single product.
+- MongoDB is a flexible document store with a powerful aggregation pipeline.
+- Cassandra is a write-optimized, peer-to-peer wide-column store designed around queries.
+- Vector databases extend the idea of "search" from exact keys to similarity.
+- The labs covered importing, querying, indexing, aggregating, and exporting data in MongoDB and Cassandra.
+
+In **Part 4**, we move from operational databases to analytics: data warehouses, dimensional modeling, and BI dashboards.
+

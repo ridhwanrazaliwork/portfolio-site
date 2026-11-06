@@ -1,0 +1,935 @@
+---
+title: "Learning Data Engineering Part 6: Big Data, Hadoop, and Spark"
+date: "2026-11-05"
+description: "Beginner-friendly notes on the 5 Vs, HDFS, MapReduce, Hive, HBase, Spark RDDs and DataFrames, cluster architecture, and tuning."
+tags: ["Big Data", "Hadoop", "Spark", "PySpark"]
+---
+
+This is Part 6 of my notes on the **IBM Data Engineering Professional Certificate**. Part 5 was about moving data. This part is about data that is too big, too fast, or too varied for one machine — and the distributed systems built to handle it.
+
+The two names that dominate the history are **Hadoop** and **Spark**. Hadoop established the pattern: cheap machines, replicated storage, and processing that moves to the data. Spark made that pattern much faster by keeping intermediate work in memory and optimizing the whole pipeline.
+
+> *Note: this series is my personal summary of IBM's Data Engineering courses on Coursera. The course materials, labs, and screenshots in these posts belong to IBM / Skills Network — everything here is my own beginner-friendly rewrite for learning purposes.*
+
+The labs use PySpark: a 15-task DataFrame exercise on employee data, then a capstone that analyzes e-commerce search terms and loads a pretrained sales-forecasting model.
+
+---
+
+## Chapter 1 — Big data and Hadoop
+
+### What makes data "big"
+
+**ELI5:** big data is a pile so large that one person with one wheelbarrow cannot move it — you need a team and trucks.
+
+**Big data** means datasets too large, too fast, or too varied for traditional single-machine tools. It is defined by characteristics, not a fixed number of gigabytes.
+
+The **5 Vs**:
+
+| V | Meaning |
+| :--- | :--- |
+| **Volume** | Huge amounts, from terabytes to petabytes |
+| **Velocity** | Arrives fast: streams, clicks, sensors |
+| **Variety** | Many formats: tables, JSON, text, images, logs |
+| **Veracity** | Quality and trustworthiness vary |
+| **Value** | The point is extracting useful insight |
+
+Some lists add **variability** and **visualization**. The important shift is from **scale up** (buy a bigger machine) to **scale out** (add more machines).
+
+Big data is a capability, not a goal. Value comes from the decisions it enables, not from the size of the pile.
+
+### Impact and real use cases
+
+**ELI5:** when you can finally see the whole picture, you make better decisions — but you also need more people and rules to handle it.
+
+Business impact: personalization, recommendations, real-time fraud detection, demand forecasting, logistics, and customer behavior analysis.
+
+Technical impact: new storage systems such as HDFS and object stores, new processing engines such as Spark, distributed computing as the default, and new roles such as data engineer, platform engineer, and SRE.
+
+Organizational impact: a data-driven culture, governance and privacy, and serious cost management.
+
+Big data is not always the answer:
+
+| Good fit | Poor fit |
+| :--- | :--- |
+| Log and clickstream analysis | Small datasets |
+| Recommendation engines | Low-latency single-row transactions |
+| Fraud and anomaly detection | Simple reporting |
+| IoT and sensor telemetry | Problems a warehouse already handles |
+| Large-scale ETL and lake ingestion | Teams without the operational skills |
+
+Start with the question, then pick the tool. Complexity has a real operational cost.
+
+### Parallel processing and scaling
+
+**ELI5:** parallel processing is many cooks chopping vegetables at once; data parallelism is giving each cook a different pile.
+
+- **Parallel processing** — doing multiple computations at the same time.
+- **Scale up (vertical)** — make one machine bigger. Simple, but there is a ceiling and it gets expensive.
+- **Scale out (horizontal)** — add more machines. Cheaper at scale and fault-tolerant, but requires coordination.
+- **Data parallelism** — split the data across workers; each runs the same operation on its chunk.
+- **Task parallelism** — different workers run different tasks.
+
+Distributed computing challenges:
+
+| Challenge | Question |
+| :--- | :--- |
+| **Partitioning** | How do we split the data? |
+| **Coordination** | Who does what? |
+| **Fault tolerance** | What happens when a machine dies? |
+| **Shuffle** | How do we move data between machines? |
+| **Network** | Is the network the bottleneck? |
+
+**Amdahl's law** says speedup is limited by the serial portion of the work. The practical rule: minimize data movement and maximize local processing.
+
+### The big data ecosystem
+
+**ELI5:** a big data platform is a whole kitchen — storage, processing, scheduling, and serving all have their own stations.
+
+| Layer | Tools |
+| :--- | :--- |
+| **Storage** | HDFS, object storage, NoSQL, data lakes |
+| **Processing** | MapReduce, Spark, Flink, Hive, Presto/Trino |
+| **Ingestion** | Kafka, Flume, Sqoop (legacy), NiFi |
+| **Orchestration** | Airflow, Oozie (legacy), cloud workflow tools |
+| **Query/serving** | Hive, SparkSQL, Presto, warehouses |
+| **Management** | YARN, Kubernetes, cluster managers |
+| **Governance** | Catalogs, lineage, metrics, logging |
+
+Cloud managed versions include EMR, Dataproc, Databricks, HDInsight, and IBM Cloud services.
+
+The ecosystem is layered; no single tool does everything. Tool choice depends on batch versus streaming, latency, cost, team skills, and the existing platform.
+
+Open source is the reason this ecosystem exists. Hadoop, Spark, Hive, HBase, and Kafka are all Apache projects. Open source removes license cost and encourages innovation, but it still costs money in operations, talent, and support. Check the license before commercial use, and evaluate whether a project is healthy and maintained.
+
+### Hadoop
+
+**ELI5:** Hadoop is the original big-data moving company — a shared storage warehouse (HDFS) plus a crew that processes the boxes (MapReduce).
+
+**Apache Hadoop** is an open-source framework for distributed storage and batch processing.
+
+| Component | Job |
+| :--- | :--- |
+| **HDFS** | Distributed file system |
+| **MapReduce** | Distributed batch processing model |
+| **YARN** | Resource management and scheduling |
+
+It was designed for **commodity hardware** — many cheap machines instead of one supercomputer. Fault tolerance comes from **replication**. Processing **moves to the data** to reduce network traffic.
+
+Hadoop is batch-oriented: high throughput, not low latency. Pure Hadoop clusters are less common now; Spark on object storage, YARN, or Kubernetes is the modern pattern, but the concepts still underpin big data.
+
+### HDFS
+
+**ELI5:** HDFS is a giant shared filing cabinet — every file is split into blocks, and each block is copied onto several shelves so a lost shelf is not a lost file.
+
+- **NameNode** — the librarian: tracks file names, directories, and block locations.
+- **DataNodes** — the shelves: store the actual blocks.
+- **Secondary NameNode** — helps with metadata checkpointing; not a hot standby in classic Hadoop.
+- **Blocks** — files are split into fixed-size chunks, often 128 MB.
+- **Replication** — each block is copied, often three times.
+- **Rack awareness** — replicas are spread across racks to survive rack failures.
+- **Write once, read many** — optimized for streaming reads, not random updates.
+- **Data locality** — processing is scheduled near the data.
+
+```bash
+hdfs dfs -ls /path
+hdfs dfs -mkdir -p /data/dir
+hdfs dfs -put local.csv /data/
+hdfs dfs -cat /data/file
+```
+
+Limitations: many small files waste NameNode memory, and HDFS is not good for low-latency random access. Modern object storage plays a similar role.
+
+### MapReduce
+
+**ELI5:** count votes by splitting the pile among counters (map), grouping each candidate's slips (shuffle), then adding them up (reduce).
+
+**MapReduce** is a programming model for parallel batch processing.
+
+```text
+input
+  │
+  ▼
+map       emit (key, value)
+  │
+  ▼
+shuffle   group values by key
+  │
+  ▼
+reduce    aggregate each key
+  │
+  ▼
+output
+```
+
+A word count: map emits `(word, 1)`, reduce sums the counts per word.
+
+| Piece | Job |
+| :--- | :--- |
+| **Mapper** | Processes input splits in parallel |
+| **Combiner** | Mini-reduce on the map side to cut shuffle volume |
+| **Partitioner** | Decides which reducer gets which key |
+| **Reducer** | Aggregates the grouped values |
+
+Strengths: simple, scalable, fault-tolerant. Weaknesses: slow for iterative algorithms such as machine learning, lots of disk I/O, and a rigid two-stage model. Spark replaced it for many workloads because of in-memory processing and a richer API.
+
+### Hive and HBase
+
+**ELI5:** Hive is a translator — you speak SQL, and it turns your sentence into jobs that run on the cluster. HBase is a giant sorted dictionary spread across many machines.
+
+**Apache Hive** is a data warehouse layer on top of HDFS:
+
+- Queries big files with **HiveQL**, a SQL-like language.
+- The **metastore** stores table definitions, schemas, and partitions.
+- Tables map to HDFS directories; partitions map to subdirectories.
+- Schema-on-read: structure is applied when querying, not when storing.
+- Originally translated queries to MapReduce; modern Hive can use Tez or Spark.
+- Good for batch ETL and huge datasets; high latency, not for transactions.
+
+```sql
+CREATE TABLE sales (id INT, amount DOUBLE) STORED AS PARQUET;
+LOAD DATA INPATH '/data/sales.parquet' INTO TABLE sales;
+SELECT * FROM sales WHERE amount > 100;
+SHOW PARTITIONS sales;
+```
+
+**Apache HBase** is a distributed, column-family NoSQL database built on HDFS:
+
+- **Row key** — the primary lookup path; design matters enormously.
+- **Column families** — groups of columns stored together.
+- **Sparse** — missing columns cost nothing.
+- **Versioned cells** — multiple timestamps per value.
+- Strong consistency per row.
+- Good for random read/write at scale, time-series, sparse data, and very large tables.
+- Not good for complex joins or ad-hoc analytics; use Hive or SparkSQL for that.
+
+Row-key design tip: avoid hot-spotting. Spread keys with salting, hashing, or reversed timestamps.
+
+---
+
+## Chapter 2 — Apache Spark
+
+### Why Spark is faster
+
+**ELI5:** MapReduce writes every step to disk; Spark keeps things in memory and runs a whole pipeline at once — like cooking with everything on the counter instead of in the fridge.
+
+**Apache Spark** is a unified, distributed, in-memory processing engine.
+
+Why it is faster than classic MapReduce:
+
+- In-memory computation.
+- **Lazy evaluation** plus DAG optimization.
+- Fewer disk round-trips.
+
+One engine handles many workloads:
+
+| Workload | Spark component |
+| :--- | :--- |
+| Batch processing | Core Spark |
+| SQL and analytics | SparkSQL |
+| Streaming | Structured Streaming |
+| Machine learning | MLlib |
+| Graph processing | GraphX |
+
+APIs exist for Python (PySpark), Scala, Java, R, and SQL. Spark runs on YARN, Kubernetes, Standalone, local mode, and cloud services. It integrates with Hive, HDFS, Kafka, object storage, and JDBC databases.
+
+The tradeoff: Spark needs memory, tuning matters, and small jobs are often not worth the overhead.
+
+### Functional programming basics
+
+**ELI5:** functional programming is a conveyor belt — you pass data through small machines (functions), and each machine returns something new instead of changing the original.
+
+- **Pure functions** — same input, same output, no side effects.
+- **Immutability** — transformations return new datasets.
+- **First-class functions** — functions can be passed around like values.
+- **Higher-order functions** — take or return functions: `map`, `filter`, `reduce`.
+- **Lazy evaluation** — build a plan, execute only when needed.
+- **Declarative style** — say what to compute, not how to loop.
+
+```python
+nums = [1, 2, 3, 4]
+squares = list(map(lambda x: x * x, nums))
+evens = list(filter(lambda x: x % 2 == 0, nums))
+```
+
+Spark likes this style because immutability and pure transformations make parallelism and recovery easier. **RDD lineage** remembers the recipe of transformations so lost data can be recomputed.
+
+### RDDs
+
+**ELI5:** an RDD is a giant list split into chunks across machines — you give instructions, and each machine works on its own chunk.
+
+**RDD** stands for **Resilient Distributed Dataset**:
+
+- **Resilient** — recovers from failures via lineage.
+- **Distributed** — partitioned across the cluster.
+- **Dataset** — a collection of records.
+- **Immutable** — transformations create new RDDs.
+
+| Concept | Meaning |
+| :--- | :--- |
+| **Partition** | Unit of parallelism; roughly one task per partition |
+| **Transformation** | Lazy operation that returns a new RDD |
+| **Action** | Triggers execution and returns a result |
+| **Narrow transformation** | Each output partition depends on one input partition, such as `map` or `filter` |
+| **Wide transformation** | Data must be shuffled, such as `groupByKey`, `join`, or `repartition` |
+| **Lineage** | The DAG of transformations used for recovery |
+| **Persistence** | Caching an RDD in memory when reused |
+
+Common transformations: `map`, `filter`, `flatMap`, `distinct`, `join`, `groupByKey`, `reduceByKey`.
+
+Common actions: `count`, `collect`, `take`, `first`, `reduce`, `saveAsTextFile`.
+
+```python
+rdd = sc.textFile("data.txt")
+
+counts = (rdd
+    .flatMap(lambda line: line.split())
+    .map(lambda word: (word, 1))
+    .reduceByKey(lambda a, b: a + b))
+
+counts.take(5)
+```
+
+Shuffles are expensive. Minimize them, and prefer `reduceByKey` over `groupByKey` when you only need an aggregate.
+
+Modern Spark prefers DataFrames over raw RDDs, but RDDs remain useful for fine-grained control.
+
+### DataFrames, Datasets, and SparkSQL
+
+**ELI5:** a DataFrame is a table with a schema — like a spreadsheet Spark can optimize, query with SQL, and process in parallel.
+
+A **DataFrame** is a distributed table with named columns and a schema. **SparkSQL** lets you query DataFrames and files with SQL.
+
+Why DataFrames beat raw RDDs:
+
+- The schema enables optimization.
+- **Catalyst** rewrites queries.
+- **Tungsten** improves memory and code generation.
+- Less code and better readability.
+
+Creating DataFrames:
+
+- From files: `spark.read.csv`, `.json`, `.parquet`, `.orc`.
+- From RDDs with a schema.
+- From databases via JDBC.
+- From Hive tables.
+
+```python
+from pyspark.sql import SparkSession
+
+spark = SparkSession.builder.appName("demo").getOrCreate()
+
+df = spark.read.csv("data.csv", header=True, inferSchema=True)
+df.show(5)
+df.printSchema()
+df.createOrReplaceTempView("data")
+spark.sql("SELECT * FROM data WHERE amount > 100").show()
+```
+
+**DataFrame versus Dataset:**
+
+| | DataFrame | Dataset |
+| :--- | :--- | :--- |
+| Typing | Untyped rows | Typed, compile-time safety |
+| Languages | All Spark languages | Primarily Scala and Java |
+| Python | PySpark DataFrames | No true Dataset in Python |
+
+Core operations:
+
+```python
+from pyspark.sql import functions as F
+
+df2 = (df.filter(F.col("amount") > 0)
+         .withColumn("amount_with_tax", F.col("amount") * 1.1)
+         .groupBy("category")
+         .agg(F.sum("amount").alias("total")))
+
+df2.orderBy(F.col("total").desc()).show()
+```
+
+Other useful operations: `select`, `drop`, `rename`, `distinct`, `dropDuplicates`, `limit`, `na.drop`, `na.fill`, and joins with `inner`, `left`, `right`, `full`, `semi`, and `anti`.
+
+**User-defined functions (UDFs)** are convenient but slower than built-ins. Prefer `pyspark.sql.functions`; use pandas UDFs or Arrow when you need vectorized Python.
+
+### Catalyst and Tungsten
+
+**ELI5:** Catalyst is the query planner that finds a cheaper route; Tungsten is the engine that makes the car faster and lighter.
+
+**Catalyst** is Spark's query optimizer:
+
+- Builds a logical plan from DataFrame or SQL operations.
+- Applies rules such as predicate pushdown, column pruning, constant folding, and join reordering.
+- Produces an optimized logical plan, then a physical plan.
+- Chooses join strategies such as broadcast or sort-merge.
+
+**Tungsten** improves execution:
+
+- Off-heap memory management.
+- Cache-aware algorithms.
+- Whole-stage code generation that fuses operators.
+- Binary processing to reduce CPU and garbage-collection overhead.
+
+**Adaptive Query Execution (AQE)** re-optimizes at runtime using actual statistics in modern Spark.
+
+Practical levers: avoid UDFs, filter early, select only needed columns, and use broadcast joins for small tables.
+
+### User-defined schemas
+
+**ELI5:** instead of letting Spark guess the table's columns, you hand it the exact blueprint.
+
+Inferring a schema is convenient but can be slow or wrong. Dates may arrive as strings, and decimals may become doubles. An explicit schema gives control, speed, and correctness.
+
+```python
+from pyspark.sql.types import (
+    StructType, StructField, IntegerType, StringType, DoubleType
+)
+
+schema = StructType([
+    StructField("id", IntegerType(), False),
+    StructField("name", StringType(), True),
+    StructField("amount", DoubleType(), True),
+])
+
+df = spark.read.csv("data.csv", header=True, schema=schema)
+```
+
+The shorter DDL style:
+
+```python
+schema = "id INT, name STRING, amount DOUBLE"
+df = spark.read.csv("data.csv", header=True, schema=schema)
+```
+
+Benefits: faster reads, consistent types, fewer downstream bugs, and better optimization.
+
+### ETL with DataFrames
+
+**ELI5:** read the ingredients, clean and combine them, then plate the result — all with table operations.
+
+```python
+raw = spark.read.csv("raw.csv", header=True, inferSchema=True)
+
+clean = raw.dropna().dropDuplicates(["id"])
+
+enriched = clean.join(ref, on="id", how="left")
+
+enriched.write.mode("overwrite").parquet("output/")
+```
+
+Write modes:
+
+| Mode | Behavior |
+| :--- | :--- |
+| `append` | Add new files |
+| `overwrite` | Replace existing data |
+| `ignore` | Do nothing if the target exists |
+| `error` / `errorifexists` | Fail if the target exists |
+
+Partition writes by a low-cardinality column:
+
+```python
+enriched.write.partitionBy("year").parquet("output/")
+```
+
+For idempotency, overwrite the target partition or use a merge pattern so reruns do not duplicate data. Prefer columnar formats such as Parquet or ORC, and avoid producing thousands of tiny files.
+
+### Hands-on lab: employee analysis with PySpark
+
+**Scenario:** load an employee CSV, define a schema, create a temporary view, and answer fifteen questions with DataFrame operations and SparkSQL.
+
+This was the Spark final project. The columns are `Emp_No`, `Emp_Name`, `Salary`, `Age`, and `Department`.
+
+#### Step 1 — Start Spark and load the data
+
+```python
+import findspark
+findspark.init()
+
+from pyspark.sql import SparkSession
+from pyspark.sql.types import (
+    StructType, StructField, IntegerType, StringType
+)
+
+spark = (SparkSession.builder
+         .appName("EmployeeAnalysis")
+         .getOrCreate())
+
+schema = StructType([
+    StructField("Emp_No", IntegerType(), False),
+    StructField("Emp_Name", StringType(), True),
+    StructField("Salary", IntegerType(), True),
+    StructField("Age", IntegerType(), True),
+    StructField("Department", StringType(), True),
+])
+
+employees_df = spark.read.csv(
+    "employees.csv", header=True, schema=schema
+)
+
+employees_df.printSchema()
+employees_df.createOrReplaceTempView("employees")
+```
+
+#### Step 2 — Query with SparkSQL
+
+Employees older than 30:
+
+```python
+spark.sql("SELECT * FROM employees WHERE Age > 30").show()
+```
+
+Average salary by department:
+
+```python
+spark.sql("""
+    SELECT Department, AVG(Salary) AS Average_Salary
+    FROM employees
+    GROUP BY Department
+""").show()
+```
+
+#### Step 3 — Transform with the DataFrame API
+
+Filter the IT department:
+
+```python
+employees_df.filter(employees_df.Department == "IT").show()
+```
+
+Add a 10% bonus:
+
+```python
+from pyspark.sql.functions import col
+
+employees_df = employees_df.withColumn(
+    "SalaryAfterBonus", col("Salary") * 1.10
+)
+employees_df.show()
+```
+
+Maximum salary by age:
+
+```python
+from pyspark.sql.functions import max
+
+employees_df.groupBy("Age") \
+    .agg(max("Salary").alias("Max_Salary")) \
+    .show()
+```
+
+Self-join on employee number:
+
+```python
+emp1 = employees_df.alias("emp1")
+emp2 = employees_df.alias("emp2")
+
+self_join = emp1.join(
+    emp2, emp1["Emp_No"] == emp2["Emp_No"]
+)
+self_join.show()
+```
+
+Average age:
+
+```python
+from pyspark.sql.functions import avg
+
+employees_df.select(avg("Age").alias("Average_Age")).show()
+```
+
+Total salary by department:
+
+```python
+from pyspark.sql.functions import sum
+
+employees_df.groupBy("Department") \
+    .agg(sum("Salary").alias("Total_Salary")) \
+    .show()
+```
+
+Sort by age ascending and salary descending:
+
+```python
+sorted_df = employees_df.orderBy(
+    employees_df.Age.asc(),
+    employees_df.Salary.desc(),
+)
+sorted_df.show()
+```
+
+Count employees per department:
+
+```python
+from pyspark.sql.functions import count
+
+employees_df.groupBy("Department") \
+    .agg(count("*").alias("Employee_Count")) \
+    .show()
+```
+
+Names containing the letter `o`:
+
+```python
+employees_df.filter(
+    employees_df["Emp_Name"].contains("o")
+).show()
+```
+
+The lab is deliberately repetitive: the same question appears as SQL and as DataFrame code. That is the point. Both produce the same optimized plan, and knowing both makes you much more effective.
+
+> **Gotcha:** `inferSchema=True` is convenient, but it can infer dates as strings or salaries as doubles. For repeated pipelines, define an explicit schema.
+
+> **Gotcha:** `collect()` brings every row to the driver. On a large DataFrame, that is how you cause an out-of-memory error. Use `show()`, `take()`, or write to storage instead.
+
+---
+
+## Chapter 3 — Spark architecture and operations
+
+### Driver, executors, and the cluster manager
+
+**ELI5:** the driver is the site manager; executors are the workers; the cluster manager is the HR department that assigns workers.
+
+| Component | Job |
+| :--- | :--- |
+| **Driver** | Runs `main()`, creates the `SparkContext`/`SparkSession`, builds the DAG, schedules tasks, collects results |
+| **Executors** | Run tasks on worker nodes, hold cached data, report back to the driver |
+| **Cluster manager** | Allocates resources: YARN, Kubernetes, Standalone, or legacy Mesos |
+
+The job hierarchy:
+
+```text
+action
+  │
+  ▼
+job
+  │
+  ▼
+stage  (split at shuffle boundaries)
+  │
+  ▼
+task   (one partition's worth of work)
+```
+
+Driver and executor memory are separate. The driver must not collect huge results; that is a common out-of-memory cause.
+
+Fault tolerance: lost partitions are recomputed from lineage, and failed executors can be replaced.
+
+Deploy modes:
+
+| Mode | Where the driver runs |
+| :--- | :--- |
+| **Client** | On the machine submitting the application |
+| **Cluster** | Inside the cluster; standard for production |
+
+### Running Spark applications
+
+**ELI5:** same app, different venues — local for practice, standalone for a small cluster, YARN or Kubernetes for the big show.
+
+| Environment | Meaning |
+| :--- | :--- |
+| **Local** | Everything on one machine: `local`, `local[4]`, `local[*]` |
+| **Standalone** | Spark's own cluster manager |
+| **YARN** | Hadoop's resource manager |
+| **Kubernetes** | Containerized execution |
+| **Cloud managed** | Databricks, EMR, Dataproc, HDInsight, IBM Cloud |
+| **Notebooks** | Jupyter, Zeppelin, Databricks, Watson Studio |
+
+`spark-submit` is the standard way to launch an application:
+
+```bash
+spark-submit \
+  --master yarn \
+  --deploy-mode cluster \
+  --executor-memory 4g \
+  --executor-cores 2 \
+  --num-executors 10 \
+  app.py
+```
+
+Useful flags:
+
+| Flag | Meaning |
+| :--- | :--- |
+| `--master` | Cluster manager URL |
+| `--deploy-mode` | Client or cluster |
+| `--executor-memory` | Memory per executor |
+| `--driver-memory` | Memory for the driver |
+| `--executor-cores` | Cores per executor |
+| `--num-executors` | Executor count on YARN |
+| `--conf` | Arbitrary Spark configuration |
+| `--py-files` | Python dependencies |
+
+Use `pyspark` for exploration and `spark-submit` for production. Cluster mode is the normal production choice.
+
+### The Spark UI
+
+**ELI5:** the Spark UI is the dashboard — it shows which workers are busy, which are waiting, and where the traffic jam is.
+
+The UI usually runs on port **4040** on the driver.
+
+| Tab | What it shows |
+| :--- | :--- |
+| **Jobs** | Actions and their stages |
+| **Stages** | Tasks, shuffle read/write, spill |
+| **Storage** | Cached RDDs and DataFrames |
+| **Environment** | Configuration |
+| **Executors** | Memory, cores, task counts |
+| **SQL** | Query plans and metrics |
+
+What to look for:
+
+- Long-running stages.
+- **Skew** — one task much slower or larger than the rest.
+- **Spills** — data overflowing memory to disk.
+- **GC time** — excessive garbage collection.
+- Failed tasks and retries.
+
+Debug on a small sample, read the stack trace and failed stage, check input size and partition counts, and look for accidental cartesian joins or missing filters.
+
+### Memory and CPU
+
+**ELI5:** executor memory is a shared desk — too little and papers spill onto the floor; too much and you paid for space you do not use.
+
+Memory concepts:
+
+- **Executor memory** — heap for tasks and cached data.
+- **Driver memory** — application logic and collected results.
+- **Memory overhead** — extra off-heap allowance, often around 10%.
+- **Storage versus execution memory** — Spark shares a unified region; caching can evict execution memory and vice versa.
+- **Spill** — a partition that does not fit is written to disk, which is slow but safe.
+- **OOM** — usually from collecting too much to the driver, skewed partitions, or oversized joins.
+
+Levers: `--executor-memory`, `--driver-memory`, `spark.memory.fraction`, `spark.memory.storageFraction`, more partitions, avoiding `collect()` on large data, and unpersisting data when done.
+
+CPU concepts:
+
+- **Cores per executor** — how many tasks run concurrently in one executor.
+- **Total parallelism** is roughly executors times cores per executor.
+- **Partitions** should roughly match available task slots.
+- Too few partitions: idle cores and OOM risk.
+- Too many partitions: scheduling overhead and tiny tasks.
+- `spark.sql.shuffle.partitions` defaults to 200 in many setups; tune it for the data size.
+- **Data skew** — a few partitions are much larger; fix with salting, repartitioning, or broadcast joins.
+
+### Tuning checklist
+
+**ELI5:** tuning is adjusting the oven — the same recipe can burn or undercook depending on the settings.
+
+Before tuning, measure with the Spark UI. Do not guess.
+
+Quick wins:
+
+- Filter early and select only needed columns.
+- Avoid Python UDFs; use built-in functions.
+- Use broadcast joins for small tables.
+- Cache only DataFrames that are reused.
+- Fix skew before adding resources.
+- Use columnar formats such as Parquet or ORC.
+- Partition output sensibly.
+- Compact small files.
+
+Shuffle tuning: reduce shuffle data, increase partitions if spilling, and prefer `reduceByKey` over `groupByKey`.
+
+Cost awareness: cluster time is money. Right-size executors and shut down idle clusters.
+
+### Hands-on lab: e-commerce search terms and a sales model
+
+**Scenario:** analyze search terms from an e-commerce web server, then load a pretrained sales-forecasting model and predict sales for 2023.
+
+This was the Spark and MLOps capstone.
+
+#### Step 1 — Load and inspect the data
+
+```python
+import findspark
+findspark.init()
+
+from pyspark.sql import SparkSession
+
+spark = SparkSession.builder \
+    .appName("EcommerceSearchTerms") \
+    .getOrCreate()
+
+df = spark.read.csv("searchterms.csv", header=True)
+
+print((df.count(), len(df.columns)))
+df.show(5)
+df.schema["searchterm"].dataType
+```
+
+The dataset is a search-term log. The row count and column count depend on the file version, so verify them from the output rather than assuming.
+
+#### Step 2 — Answer search questions
+
+How many times was `gaming laptop` searched?
+
+```python
+df.filter(df.searchterm == "gaming laptop").count()
+```
+
+The top five most frequent search terms:
+
+```python
+df.groupBy("searchterm") \
+  .count() \
+  .sort("count", ascending=False) \
+  .show(5)
+```
+
+This is the same group-by-and-sort pattern you would use in SQL, expressed with the DataFrame API.
+
+#### Step 3 — Load the pretrained model
+
+```bash
+wget <model-archive-url>
+tar -xvzf model.tar.gz
+```
+
+```python
+from pyspark.ml.regression import LinearRegressionModel
+
+loaded_model = LinearRegressionModel.load("sales_prediction.model")
+```
+
+#### Step 4 — Predict 2023 sales
+
+```python
+from pyspark.ml.linalg import Vectors
+
+future = spark.createDataFrame(
+    [(Vectors.dense(2023),)], ["features"]
+)
+
+predictions = loaded_model.transform(future)
+predictions.show()
+```
+
+The model expects a feature vector. A single year becomes a one-element dense vector. `transform` returns the prediction column.
+
+> **Gotcha:** a saved Spark ML model is tied to the Spark version and feature schema used to train it. A model trained on a different vector shape will fail or produce nonsense.
+
+> **Gotcha:** `df.schema["searchterm"].dataType` tells you whether the search term is a string or was inferred as something else. Check before filtering.
+
+> **Gotcha:** `show(5)` is not a substitute for a full count. Use `count()` when the number matters.
+
+### One-page recap
+
+**ELI5:** the whole part in one breath.
+
+- Big data is volume, velocity, variety, veracity, and value.
+- Scale out with many machines; data parallelism splits the data.
+- Hadoop is HDFS for storage, MapReduce for batch processing, and YARN for resources.
+- HDFS splits files into replicated blocks; the NameNode tracks metadata.
+- Hive puts SQL on HDFS; HBase is a NoSQL key-value store on HDFS.
+- Spark is faster because it is in-memory, lazy, and DAG-optimized.
+- RDDs are low-level distributed collections; DataFrames add schema and optimization.
+- Catalyst optimizes queries; Tungsten speeds execution.
+- The driver plans, executors run, and the cluster manager allocates.
+- Run with `spark-submit` on local, YARN, Kubernetes, or a cloud service.
+- Monitor with the Spark UI and watch skew, spills, GC, and failed tasks.
+- Tune memory, cores, partitions, and joins; measure first.
+
+### Mini cheat sheet
+
+```python
+from pyspark.sql import SparkSession
+from pyspark.sql import functions as F
+from pyspark.sql.types import (
+    StructType, StructField, StringType, IntegerType
+)
+
+spark = SparkSession.builder.appName("demo").getOrCreate()
+
+# Read
+df = spark.read.csv("data.csv", header=True, inferSchema=True)
+df = spark.read.parquet("data.parquet")
+df = spark.read.json("data.json")
+
+# Schema
+schema = "id INT, name STRING, amount DOUBLE"
+df = spark.read.csv("data.csv", header=True, schema=schema)
+
+# Inspect
+df.show(5)
+df.printSchema()
+df.count()
+df.columns
+
+# Transform
+df.select("id", "amount")
+df.filter(F.col("amount") > 100)
+df.withColumn("tax", F.col("amount") * 1.1)
+df.dropDuplicates(["id"])
+df.na.drop()
+df.na.fill(0)
+
+# Aggregate
+df.groupBy("category").agg(
+    F.sum("amount").alias("total"),
+    F.avg("amount").alias("average"),
+)
+
+# Join
+df.join(other, on="id", how="left")
+df.join(F.broadcast(small_df), on="id")
+
+# Sort
+df.orderBy(F.col("amount").desc())
+
+# SQL
+df.createOrReplaceTempView("data")
+spark.sql("SELECT category, SUM(amount) FROM data GROUP BY category").show()
+
+# Write
+df.write.mode("overwrite").parquet("output/")
+df.write.partitionBy("year").parquet("output/")
+
+# RDD
+rdd = spark.sparkContext.textFile("data.txt")
+rdd.flatMap(lambda line: line.split()) \
+   .map(lambda word: (word, 1)) \
+   .reduceByKey(lambda a, b: a + b) \
+   .take(5)
+
+# Cache
+df.cache()
+df.unpersist()
+```
+
+```bash
+# Submit
+spark-submit \
+  --master yarn \
+  --deploy-mode cluster \
+  --executor-memory 4g \
+  --executor-cores 2 \
+  --num-executors 10 \
+  app.py
+```
+
+### Pitfalls to remember
+
+- **Collecting too much** — `collect()` on a large DataFrame can kill the driver.
+- **Too few partitions** — idle cores and out-of-memory errors.
+- **Too many partitions** — scheduling overhead and tiny tasks.
+- **Data skew** — one task does most of the work while everyone waits.
+- **Python UDFs everywhere** — much slower than built-in functions.
+- **No explicit schema** — inferred types surprise you downstream.
+- **Many small files** — slow listings and poor scan performance.
+- **Ignoring the Spark UI** — tuning without measurements is guesswork.
+- **Caching everything** — wastes memory and can slow execution.
+- **Assuming Hadoop is gone** — its concepts still shape modern platforms.
+
+### Series recap
+
+Part 6 scaled the pipeline:
+
+- Big data is defined by its characteristics, not a fixed size.
+- Hadoop introduced distributed storage, batch processing, and resource management.
+- HDFS, MapReduce, Hive, and HBase each solve a different part of the problem.
+- Spark unifies batch, SQL, streaming, and machine learning in one engine.
+- RDDs give fine-grained control; DataFrames add schemas and optimizer power.
+- The driver plans, executors run, and the cluster manager allocates resources.
+- The Spark UI and a measurement-first tuning habit are non-negotiable.
+
+In **Part 7**, we use Spark for machine learning, look at generative AI for data engineers, and close with the career and interview material.
+

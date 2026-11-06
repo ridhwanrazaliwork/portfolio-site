@@ -1,0 +1,2028 @@
+---
+title: "Learning Data Engineering Part 1: Foundations, Linux, and Python"
+date: "2026-11-05"
+description: "Beginner-friendly notes on what data engineering is, how Linux and shell scripting work, and how Python moves messy data into clean tables."
+tags: ["Data Engineering", "Linux", "Python", "Foundations"]
+---
+
+I have been working through the **IBM Data Engineering Professional Certificate** on Coursera, and this series is my attempt to rewrite the course material in plain English. The certificate touches a lot of ground: Linux, SQL, Python, data warehousing, ETL, Spark, machine learning, and even the career side of data engineering. Instead of dumping everything into one giant post, I am splitting it into parts.
+
+This is Part 1. It covers the foundation: what data engineering actually is, the Linux and shell skills you need to survive, and the Python you will use every day to move data around.
+
+> *Note: this series is my personal summary of IBM's Data Engineering courses on Coursera. The course materials, labs, and screenshots in these posts belong to IBM / Skills Network — everything here is my own beginner-friendly rewrite for learning purposes.*
+
+The goal is not to turn you into a data engineer by the end of this post. The goal is to make the vocabulary stop feeling like magic: pipelines, ETL, metadata, data lakes, shell scripts, virtual environments, and all the rest.
+
+---
+
+## Chapter 1 — What data engineering actually is
+
+### The modern data ecosystem
+
+**ELI5:** a city where data is born in many places, travels through pipes, gets stored in warehouses, and is finally eaten by analysts and apps.
+
+A **data ecosystem** is everything involved in creating, moving, storing, and using data: the sources, the tools, the people, and the processes. It is not one product you can buy. It is a supply chain for information.
+
+```text
+  SOURCES                MOVE                 STORE                USE
+  ───────                ────                 ─────                ───
+  apps        ─┐
+  databases    ├──►  ingestion  ───►  databases /  ───►  analysts
+  APIs         │      pipelines         warehouses /       scientists
+  files        │                        lakes              apps
+  sensors     ─┘
+```
+
+The stages are usually described as **collect → store → process → analyze → consume**. In a modern company these stages are spread across clouds, on-premise servers, SaaS tools, phones, and sensors. Nothing lives in one place.
+
+The people in the ecosystem have different jobs:
+
+| Role | What they mostly do |
+| :--- | :--- |
+| **Data engineer** | Builds and maintains the pipes, storage, and processing systems |
+| **Data analyst / BI analyst** | Turns data into reports and dashboards |
+| **Data scientist** | Builds models and predictions |
+| **Business analyst** | Translates business questions into data questions |
+| **Data architect** | Designs the overall data blueprint |
+| **Database administrator** | Keeps databases healthy, secure, and fast |
+| **Application developer** | Uses data inside products and apps |
+
+Everyone downstream depends on the data engineer's work being reliable. When the pipes leak, the analyst sees a wrong dashboard and the data scientist trains a model on garbage.
+
+### What a data engineer builds
+
+**ELI5:** if data is water, the data engineer builds the wells, pipes, filters, and tanks — then makes sure clean water reaches every tap.
+
+**Data engineering** is the work of designing, building, and maintaining systems that collect, store, process, and deliver data reliably. The focus is on the infrastructure and the pipelines, not on making the final chart or training the final model.
+
+The core promise is simple: make data **available, clean, secure, and on time** for other people.
+
+```text
+  Raw sources          Data engineer              Data consumers
+  ───────────          ─────────────              ──────────────
+  apps, APIs   ───►   ingest → clean → store  ───►  analysts
+  files, DBs          monitor → document           scientists
+  streams             secure → serve               apps
+```
+
+Good data engineering is mostly invisible. Nobody notices the pipeline until it breaks.
+
+There are several specializations inside the field:
+
+| Specialization | What it focuses on |
+| :--- | :--- |
+| **Database design / administration** | Schemas, tuning, backups, access control |
+| **Data warehousing** | Organized analytics storage and dimensional models |
+| **Big data engineering** | Very large, fast, or varied data on distributed systems |
+| **Pipeline / ETL engineering** | Moving and transforming data between systems |
+| **Cloud data engineering** | Building on AWS, Azure, GCP, or IBM Cloud |
+| **ML / AI data engineering** | Preparing reliable datasets for models |
+
+The field also has a history, and the history explains the tooling:
+
+```text
+1970s–80s   relational databases, structured data, SQL
+1990s       data warehouses and business intelligence
+2000s       big data, Hadoop, cheap storage, "store everything"
+2010s       cloud, streaming, data lakes, lakehouses
+now         real-time pipelines, DataOps, governance, AI-ready data
+```
+
+The direction is clear: from **batch, structured, on-premise** toward **real-time, varied, cloud-based**. The old ideas did not disappear. They became layers inside the new systems.
+
+### Responsibilities and skills
+
+**ELI5:** a plumber, a librarian, and a security guard rolled into one — but for data.
+
+A data engineer's responsibilities usually include:
+
+- Gathering and importing data from many sources.
+- Designing and maintaining storage: databases, warehouses, lakes.
+- Building pipelines that move and transform data.
+- Cleaning and standardizing data, often with help from data wrangling tools.
+- Ensuring performance, reliability, and uptime.
+- Protecting data with security and access controls.
+- Documenting data so other people can find and trust it.
+- Collaborating with analysts, scientists, and business teams.
+
+The technical skills that matter most:
+
+| Skill | Why it matters |
+| :--- | :--- |
+| **SQL** | The language of databases; almost every data job needs it |
+| **Python** | Pipelines, cleaning, automation, APIs, testing |
+| **Database and warehouse concepts** | You need to know how storage actually works |
+| **ETL / ELT and orchestration** | Moving data reliably is the core job |
+| **Big data tools** | Hadoop and Spark appear in large-scale systems |
+| **Cloud and containers** | Most modern platforms are cloud-based |
+| **Linux and Git** | Servers run Linux; code lives in version control |
+
+The soft skills are not optional:
+
+- Problem solving and debugging.
+- Curiosity, because the tooling changes constantly.
+- Communication, because you have to explain tradeoffs to non-technical people.
+- Attention to detail, because one wrong join can silently corrupt a report.
+- Business sense, because you need to know *why* the data matters.
+
+A normal day might look like this: check overnight pipelines, fix a broken ingestion job, investigate a slow query, meet with an analyst about a new data source, review code, and improve monitoring or documentation.
+
+The job is less glamorous than data science and more critical. You are the foundation everyone else stands on.
+
+### Data types, file formats, and sources
+
+**ELI5:** data comes in neat boxes (tables), half-neat boxes (JSON), and total messes (video, free text, PDFs).
+
+There are three broad types of data:
+
+| Type | Shape | Examples | Difficulty |
+| :--- | :--- | :--- | :--- |
+| **Structured** | Fixed rows and columns | SQL tables, spreadsheets | Easy to query |
+| **Semi-structured** | Some organization, flexible | JSON, XML, logs | Needs parsing |
+| **Unstructured** | No fixed shape | Images, audio, video, free text, PDFs | Hardest to analyze |
+
+The common file formats each have a job:
+
+| Format | Shape | Good for | Watch out for |
+| :--- | :--- | :--- | :--- |
+| **CSV / TSV** | Plain-text table | Sharing, small datasets | No types, no nesting, comma/quote issues |
+| **JSON** | Nested key-value | APIs, web data, documents | Verbose; schema varies |
+| **XML** | Tag-based tree | Older enterprise systems | Heavy and awkward to parse |
+| **Parquet** | Columnar, compressed | Analytics at scale | Not human-readable |
+| **Avro** | Row-based, schema included | Streaming and data exchange | Needs a schema registry in practice |
+
+The row-vs-column distinction is worth internalizing:
+
+```text
+ROW-BASED (CSV, Avro)                 COLUMNAR (Parquet, ORC)
+┌────┬────────┬───────┐               ┌────────┬────────┬────────┐
+│ id │ name   │ city  │               │ id     │ name   │ city   │
+├────┼────────┼───────┤               ├────────┼────────┼────────┤
+│ 1  │ Ada    │ London│               │ 1,2,3  │ Ada,Bob│ London │
+│ 2  │ Bob    │ Paris │               │        │ ,Cy    │ ,Paris │
+│ 3  │ Cy     │ Berlin│               └────────┴────────┴────────┘
+└────┴────────┴───────┘               read only the columns you need
+fetch whole records                   → faster analytical scans
+```
+
+Data can come from databases, applications, APIs, files, spreadsheets, web logs, clickstreams, social media, sensors, IoT devices, streaming systems, public datasets, and third-party providers. The engineer's job is to handle all of it, not just the clean tabular part.
+
+### Languages for data professionals
+
+**ELI5:** different tools for different jobs — SQL for asking questions, Python for building machines, shell for gluing everything together.
+
+| Language | Main use |
+| :--- | :--- |
+| **SQL** | Querying, filtering, joining, and aggregating data |
+| **Python** | Pipelines, cleaning, automation, APIs, machine learning |
+| **R** | Statistics and analysis |
+| **Java / Scala** | Big data systems and high-performance pipelines |
+| **Shell / Bash** | File operations, scheduling, gluing tools together |
+| **NoSQL query languages** | Database-specific queries, e.g. MongoDB or Cypher |
+
+If you are starting from zero, learn **SQL first**, then **Python**, then specialize. You do not need every language. You need SQL plus one programming language really well.
+
+### Metadata and metadata management
+
+**ELI5:** metadata is the label on the jar — it tells you what is inside, where it came from, and whether it is still good.
+
+**Metadata** is data about data. Column names, data types, file size, owner, creation date, and source system are all metadata.
+
+| Type | Examples | Answers |
+| :--- | :--- | :--- |
+| **Technical** | Schema, format, location, size | How is the data stored? |
+| **Business** | Field definitions, ownership, glossary | What does the data mean? |
+| **Operational** | Job status, last updated, lineage, usage | Is it fresh and where did it come from? |
+
+Metadata matters because it helps people **find** data, **trust** data, and **trace** data. **Lineage** is the family tree of a dataset: where it came from, what transformations touched it, and where it ended up.
+
+**Metadata management** is the practice of keeping that information accurate and available, usually through a **data catalog**. Without metadata, a data lake becomes a **data swamp** — lots of stuff, no map.
+
+### Data repositories
+
+**ELI5:** different kinds of storage — a filing cabinet, a junk drawer, a pantry, a snack shelf, and a giant pond.
+
+| Repository | Shape | Optimized for | Typical examples |
+| :--- | :--- | :--- | :--- |
+| **RDBMS** | Tables with schemas and constraints | Transactions, strong consistency | Db2, MySQL, PostgreSQL, Oracle, SQL Server |
+| **NoSQL** | Documents, keys, wide columns, graphs | Scale and flexible shapes | MongoDB, Cassandra, Redis, Neo4j |
+| **Data warehouse** | Modeled, historical, structured | Analytics and reporting | Db2 Warehouse, Redshift, Snowflake, BigQuery |
+| **Data mart** | A slice of a warehouse | One team or one subject | Sales mart, finance mart |
+| **Data lake** | Raw files of any shape | Cheap storage and flexibility | S3, Azure Data Lake, IBM COS |
+| **Data lakehouse** | Lake storage plus warehouse features | Unified analytics | Delta Lake, Iceberg, Hudi |
+
+Two phrases explain most of the difference:
+
+- **Schema-on-write** — define the structure before storing the data. Warehouses do this. You get clean, queryable data, but you must decide the shape up front.
+- **Schema-on-read** — store raw data now, interpret it when you read it. Lakes do this. You get flexibility, but you also get the responsibility of making sense of it later.
+
+A simple chooser:
+
+```text
+What kind of data is it?
+        │
+        ├── structured, transactional ──────► RDBMS
+        │
+        ├── flexible / huge / fast-changing ─► NoSQL
+        │
+        ├── analytics over history ──────────► warehouse
+        │
+        ├── raw files of every shape ────────► lake
+        │
+        └── both lake flexibility and
+            warehouse management ────────────► lakehouse
+```
+
+RDBMS follows **ACID**: Atomicity, Consistency, Isolation, Durability. Those properties make transactions reliable. Many NoSQL systems follow **BASE**: Basically Available, Soft state, Eventually consistent. That tradeoff buys scale and flexibility, but it gives up some of the guarantees you get from a relational database.
+
+### Pipelines, ETL, ELT, and integration
+
+**ELI5:** a pipeline is a conveyor belt that moves ingredients from the farm to the kitchen — and sometimes washes and chops them on the way.
+
+A **data pipeline** is a series of steps that moves data from a source to a destination, with transformations along the way.
+
+- **Batch pipeline** — runs on a schedule, such as hourly or nightly, and processes a chunk of data.
+- **Streaming pipeline** — processes events continuously as they arrive.
+
+The two classic patterns are ETL and ELT:
+
+| Pattern | Order | Where transformation happens | Good when |
+| :--- | :--- | :--- | :--- |
+| **ETL** | Extract → Transform → Load | Before the data reaches the destination | The destination is expensive, rigid, or must only receive clean data |
+| **ELT** | Extract → Load → Transform | Inside the destination | Storage and compute are cheap, and you want raw data preserved |
+
+```text
+ETL
+source ──► extract ──► transform ──► load ──► warehouse
+                         ▲
+                    clean before storage
+
+ELT
+source ──► extract ──► load ──► transform ──► warehouse
+                                 ▲
+                            transform in place
+```
+
+**Orchestration** is the conductor that makes sure the steps run in the right order, at the right time, and with retries when something fails. Tools in this space include Apache Airflow, Apache Kafka, IBM InfoSphere, Informatica, Talend, Azure Data Factory, and dbt.
+
+### Big data platforms
+
+**ELI5:** when the data is too big for one computer, you split the work across a whole team of computers.
+
+**Big data** means data that is too large, too fast, or too varied for traditional single-machine tools. The five Vs are **volume**, **velocity**, **variety**, **veracity**, and **value**.
+
+The original big data stack is Hadoop:
+
+| Piece | Job |
+| :--- | :--- |
+| **HDFS** | Splits files into blocks and stores copies across machines |
+| **MapReduce** | The original distributed processing model |
+| **YARN** | Manages cluster resources and schedules jobs |
+| **Hive** | SQL-like queries on top of Hadoop data |
+| **HBase** | A NoSQL database on top of HDFS |
+
+**Apache Spark** is the faster, in-memory processing engine that largely replaced MapReduce for many workloads. It handles batch, streaming, SQL, and machine learning. We will spend a lot more time on Spark in Part 6.
+
+The important idea for now: big data changed the job from "one big database" to "a cluster of machines working together." Cloud platforms have made that cluster someone else's physical problem, but the distributed-systems concepts still matter.
+
+### Data platform architecture and security
+
+**ELI5:** the data platform is the whole kitchen layout — where ingredients enter, where they are stored, where they are cooked, and who is allowed in.
+
+A **data platform** is the combination of infrastructure, tools, and processes that delivers data to users. A typical platform has layers:
+
+```text
+┌─────────────────────────────────────────────┐
+│ Serving: dashboards, APIs, ML models        │
+├─────────────────────────────────────────────┤
+│ Processing: clean, join, aggregate          │
+├─────────────────────────────────────────────┤
+│ Storage: databases, lakes, warehouses       │
+├─────────────────────────────────────────────┤
+│ Ingestion: batch and streaming sources      │
+├─────────────────────────────────────────────┤
+│ Governance: quality, lineage, security      │
+└─────────────────────────────────────────────┘
+```
+
+When choosing a data store, ask about data structure and volume, read/write patterns, latency, consistency, scalability, cost, security, and the skills your team already has.
+
+Security is not a separate project you bolt on later. The basics:
+
+- **CIA triad** — Confidentiality, Integrity, Availability.
+- **Authentication** — who are you?
+- **Authorization** — what are you allowed to do?
+- **Encryption** at rest and in transit.
+- **Access control** — role-based access and least privilege.
+- **Masking / anonymization** for sensitive fields.
+- **Auditing and monitoring** — log who did what.
+- **Backups and disaster recovery**.
+
+Breaches are expensive, regulations require protection, and trust is hard to rebuild. Everyone is responsible for security, but the data engineer builds many of the guardrails.
+
+### Collection and data wrangling
+
+**ELI5:** first you gather the ingredients, then you wash, peel, and chop them so they are actually usable.
+
+Data can be gathered from files, databases, APIs, streams, web scraping, and third-party providers. **Ingestion** is the act of bringing it in, either in batches or in real time.
+
+**Data wrangling** (also called data munging) is cleaning and reshaping raw data into something usable:
+
+- Handle missing values: drop, fill, or flag.
+- Remove duplicates.
+- Fix inconsistent formats: dates, units, names.
+- Handle outliers and bad values.
+- Standardize categories and naming.
+- Enrich data by joining or adding fields.
+- Reshape data: pivot, merge, split columns.
+
+Wrangling is often **60–80% of the work**. Messy data is normal, not a sign that you are doing it wrong. The tools are spreadsheets for quick checks, SQL for set-based work, Python and pandas for flexible scripting, OpenRefine for interactive cleaning, and cloud data-prep tools for larger jobs.
+
+Good practice: document every transformation so the result can be reproduced.
+
+### Querying, tuning, and troubleshooting
+
+**ELI5:** asking the database questions — and making sure it answers fast instead of making everyone wait.
+
+Most analytical querying is built from a small set of pieces:
+
+- `SELECT` chooses columns.
+- `WHERE` filters rows.
+- `JOIN` combines tables.
+- `GROUP BY` and `HAVING` summarize groups.
+- `ORDER BY` and `LIMIT` sort and cap results.
+- Subqueries and CTEs break complex questions into steps.
+- Views are saved queries that behave like tables.
+- Aggregations are `SUM`, `COUNT`, `AVG`, `MIN`, and `MAX`.
+
+Performance tuning is mostly about reducing the amount of work the database has to do:
+
+- Index columns used for filtering and joins.
+- Read query plans with `EXPLAIN`.
+- Partition large tables by date or category.
+- Avoid `SELECT *`; fetch only the columns you need.
+- Filter early, before joining.
+- Use materialized views or caching for repeated heavy queries.
+- Keep statistics up to date.
+
+Troubleshooting means finding the bottleneck. Is it the query, the network, the storage, or the compute? Check slow-query logs and resource usage. Look for missing indexes, full-table scans, data skew, and lock contention. Test with a smaller dataset and compare expected versus actual results.
+
+The rule is simple: **measure first, optimize second.** Guessing wastes time.
+
+### Governance, compliance, and DataOps
+
+**ELI5:** rules for who can use which data, how it must be handled, and how to keep the whole system running smoothly.
+
+**Data governance** is the set of policies, standards, and roles that manage data as an asset:
+
+- **Data stewardship** — people responsible for specific data domains.
+- **Data quality** — accuracy, completeness, consistency, timeliness.
+- **Data catalog** — a searchable inventory of data assets.
+- **Data lineage** — where data came from and how it changed.
+- **Access policies** — who can see or change what.
+
+**Compliance** means following laws and regulations such as GDPR (privacy, EU), HIPAA (health data, US), CCPA (California privacy), and PCI (payments). The recurring themes are consent, purpose limitation, the right to deletion, retention limits, and audit trails.
+
+Privacy and security are related but different:
+
+```text
+Privacy  = should we use this data at all?
+Security = can the wrong person get it?
+```
+
+**DataOps** applies DevOps ideas to data: automation of pipelines and tests, CI/CD for data code, version control for everything, monitoring and alerting, collaboration between engineers and analysts, and reproducibility. The goal is faster, safer, more reliable data delivery.
+
+### Career paths
+
+**ELI5:** many doors into the same building — pick the one that fits your background and keep walking.
+
+| Role | Main focus |
+| :--- | :--- |
+| **Data engineer** | Pipelines and infrastructure |
+| **Analytics engineer** | Modeling data for analysts, often SQL plus dbt |
+| **Data architect** | The big picture and standards |
+| **Database administrator** | Keeping databases running and secure |
+| **Data warehouse specialist** | Warehouse design and performance |
+| **Data manager** | Teams, governance, and strategy |
+| **BI engineer / developer** | Dashboards and reporting layers |
+| **Big data / cloud data engineer** | Specialized infrastructure roles |
+
+A rough learning path:
+
+1. Data fundamentals and the ecosystem.
+2. SQL and relational databases.
+3. Python for data.
+4. Data warehousing and modeling.
+5. ETL / ELT and orchestration.
+6. Big data and streaming.
+7. Cloud platforms.
+8. Governance, security, and DataOps.
+9. Portfolio projects with real datasets.
+
+People enter from IT support, analytics, software development, statistics, and plenty of unrelated careers. The common thread is curiosity and practice. Build things, break them, document them, and learn to explain your work.
+
+### One-page recap
+
+**ELI5:** the whole chapter in one breath.
+
+- Data engineering is **building reliable data pipes and storage**.
+- The ecosystem has many players; the engineer connects sources to consumers.
+- Data is **structured, semi-structured, or unstructured**.
+- Store it in the right place: **RDBMS, NoSQL, warehouse, mart, lake, or lakehouse**.
+- Move it with **pipelines** using **ETL or ELT**.
+- Big data means **many machines working together**.
+- Design a **platform** with clear layers and strong **security**.
+- Collect, clean, query, tune, and troubleshoot.
+- **Governance and compliance** keep it legal and trustworthy.
+- **DataOps** keeps it automated and reliable.
+
+### Mini glossary
+
+| Term | Meaning |
+| :--- | :--- |
+| **Schema** | The blueprint of how data is organized |
+| **Schema-on-write** | Define structure before storing (warehouse) |
+| **Schema-on-read** | Store raw, interpret later (lake) |
+| **ETL / ELT** | Extract-transform-load vs. extract-load-transform |
+| **OLTP** | Fast day-to-day transactions |
+| **OLAP** | Large analytical queries |
+| **ACID** | Reliable database transactions |
+| **BASE** | Flexible, eventually consistent NoSQL behavior |
+| **Data lineage** | The family tree of a dataset |
+| **Data catalog** | A searchable menu of available data |
+| **Data swamp** | A lake with no organization or trust |
+| **Orchestration** | Scheduling and coordinating pipeline steps |
+| **Partitioning** | Splitting big tables into smaller chunks |
+| **Index** | A lookup shortcut that speeds up queries |
+
+---
+
+## Chapter 2 — Linux and the shell
+
+### Why Linux matters
+
+**ELI5:** Linux is the kitchen most data systems are actually cooked in — even when you develop on Windows or macOS, the servers, containers, and cloud machines are usually Linux.
+
+**Unix** is the family of multitasking, multi-user operating systems that started at AT&T Bell Labs in the late 1960s. **Linux** is a free, open-source, Unix-like kernel created by Linus Torvalds in 1991. A **distribution** (distro) bundles that kernel with utilities, a shell, and a package manager.
+
+| Distro family | Package manager | Common in |
+| :--- | :--- | :--- |
+| Debian / Ubuntu / Linux Mint | `apt` with `.deb` packages | Cloud VMs, developer laptops, containers |
+| RHEL / CentOS / Fedora | `dnf` or `yum` with `.rpm` packages | Enterprise servers |
+| Arch Linux | `pacman` | Rolling-release enthusiast setups |
+
+You do not need to memorize every distro. You need to recognize which package manager you are on and where configuration files live.
+
+### The four layers and the filesystem
+
+**ELI5:** Linux is a stack — hardware at the bottom, the kernel managing it, the shell translating your typing, and applications on top.
+
+```text
+┌─────────────────────────────────────────────┐
+│ Applications: editors, servers, Python, etc.│
+├─────────────────────────────────────────────┤
+│ Shell: bash, zsh, sh — translates commands  │
+├─────────────────────────────────────────────┤
+│ Kernel: memory, processes, devices, syscalls│
+├─────────────────────────────────────────────┤
+│ Hardware: CPU, RAM, disks, network          │
+└─────────────────────────────────────────────┘
+```
+
+The **Filesystem Hierarchy Standard** gives every Linux system a familiar map:
+
+| Path | What lives there |
+| :--- | :--- |
+| `/` | The root of everything |
+| `/bin`, `/usr/bin` | Essential executables such as `ls` and `cp` |
+| `/etc` | System-wide configuration files |
+| `/home` | User home directories |
+| `/var` | Variable data such as logs in `/var/log` |
+| `/tmp` | Temporary files, often cleared on reboot |
+| `/root` | Home directory for the root user |
+
+The mental model: everything is a file or a directory, and every command is a small tool that reads input and writes output.
+
+### Terminal survival skills
+
+**ELI5:** the terminal is a conversation with the computer; tab completion and history are the autocomplete and undo of that conversation.
+
+Three habits make the terminal much less painful:
+
+- **Tab completion** — start typing a path or command and press `Tab` to complete it.
+- **Command history** — `history` lists previous commands; `!n` reruns command number `n`.
+- **Reverse search** — `Ctrl + R` searches backward through your history.
+
+For help, use `man <command>` for the full manual, or `<command> --help` for a shorter summary. The manual is often longer than you need; search inside it with `/pattern` and quit with `q`.
+
+### Informational commands
+
+| Command | What it tells you |
+| :--- | :--- |
+| `pwd` | Print the current working directory |
+| `whoami` | Show the current user |
+| `uname -a` | Show system and kernel details |
+| `date` | Show the current date and time |
+| `hostname` | Show the machine name |
+| `man <cmd>` | Open the manual page |
+| `<cmd> --help` | Show a concise option summary |
+
+### Navigation and file management
+
+| Command | What it does |
+| :--- | :--- |
+| `ls` | List directory contents |
+| `ls -l` | Long format: permissions, owner, size, date |
+| `ls -a` | Show hidden files starting with a dot |
+| `ls -la` | Combine long format with hidden files |
+| `cd <dir>` | Change directory |
+| `cd ~` | Go to your home directory |
+| `cd ..` | Move up one parent directory |
+| `cd -` | Switch to the previous directory |
+| `mkdir <dir>` | Create a directory |
+| `mkdir -p a/b/c` | Create missing parent directories |
+| `touch <file>` | Create an empty file or update its timestamp |
+| `cp <src> <dst>` | Copy a file |
+| `cp -r <src> <dst>` | Copy a directory recursively |
+| `mv <src> <dst>` | Move or rename |
+| `rm <file>` | Delete a file |
+| `rm -r <dir>` | Delete a directory recursively |
+| `rm -rf <dir>` | Force delete without prompting |
+
+A warning worth repeating: `rm -rf` does not use the trash. Check the path before you press Enter.
+
+### Permissions and ownership
+
+**ELI5:** every file has three doors — for the owner, the group, and everyone else — and each door can be read, written, or executed.
+
+A permission string looks like this:
+
+```text
+-rwxr-xr--
+│└┬┘└┬┘└┬┘
+│ │  │  └── others: r-- (4)
+│ │  └───── group:  r-x (5)
+│ └──────── user:   rwx (7)
+└────────── file type: - means regular file
+```
+
+Each permission has a number:
+
+| Permission | Symbol | Value |
+| :--- | :--- | :--- |
+| Read | `r` | 4 |
+| Write | `w` | 2 |
+| Execute | `x` | 1 |
+
+Add them up per target. `7` is `rwx`, `5` is `r-x`, `4` is `r--`.
+
+```bash
+# Symbolic mode
+chmod u+x script.sh       # add execute for the owner
+chmod go-w file.txt       # remove write for group and others
+
+# Octal mode
+chmod 755 script.sh       # owner rwx, group r-x, others r-x
+chmod 644 document.txt    # owner rw-, group r--, others r--
+
+# Ownership
+sudo chown username file.txt
+sudo chown username:groupname file.txt
+```
+
+`chmod` changes permissions; `chown` changes who owns the file. You need `sudo` when you are changing files you do not own.
+
+### Text processing
+
+**ELI5:** Linux treats text like a river — you can look at a slice, filter it, count it, or cut out the fields you care about.
+
+| Command | What it does |
+| :--- | :--- |
+| `cat file` | Print the whole file |
+| `less file` | Page through a file; quit with `q` |
+| `head -n 20 file` | Show the first 20 lines |
+| `tail -n 20 file` | Show the last 20 lines |
+| `tail -f log` | Follow a log as it grows |
+| `grep "pattern" file` | Search for matching lines |
+| `grep -i` | Case-insensitive search |
+| `grep -v` | Invert the match |
+| `grep -r` | Search recursively through directories |
+| `wc -l file` | Count lines |
+| `cut -d',' -f1 file.csv` | Extract field 1 using a comma delimiter |
+| `sort file` | Sort lines textually |
+| `sort -n` | Sort numerically |
+| `sort -u` | Sort and remove duplicates |
+
+A typical pipeline combines them:
+
+```bash
+grep "ERROR" /var/log/app.log | wc -l > error_count.txt
+```
+
+That reads the log, keeps only error lines, counts them, and writes the count to a file.
+
+### Networking commands
+
+| Command | What it does |
+| :--- | :--- |
+| `ping <host>` | Test basic connectivity |
+| `curl <url>` | Transfer data to or from a URL |
+| `curl -O <url>` | Download a file using its remote name |
+| `wget <url>` | Non-interactive downloader |
+| `ss -tulpn` | Show listening ports and connections |
+| `ip a` | Show network interfaces and addresses |
+
+In data work, `curl` and `wget` show up constantly: downloading a CSV, calling an API, or pulling a file into a container.
+
+### Archiving and compression
+
+**ELI5:** `tar` puts many files into one box; `gzip` squeezes the box so it travels faster.
+
+```bash
+# Create a gzipped tarball
+tar -czvf archive.tar.gz /path/to/dir
+
+# Extract it into a target directory
+tar -xzvf archive.tar.gz -C /target/dir
+
+# Zip and unzip
+zip -r archive.zip folder/
+unzip archive.zip
+```
+
+The `tar` flags are worth learning as a group:
+
+| Flag | Meaning |
+| :--- | :--- |
+| `-c` | Create an archive |
+| `-x` | Extract an archive |
+| `-z` | Compress with gzip |
+| `-v` | Verbose output |
+| `-f` | Use the following filename |
+
+### Redirection, pipes, and variables
+
+**ELI5:** a pipe is a conveyor belt between commands; redirection is choosing where the output lands.
+
+```text
+command1 | command2 | command3
+   │          │          │
+   └── output ┘          └── final output
+```
+
+| Operator | Meaning |
+| :--- | :--- |
+| `>` | Redirect stdout to a file, overwriting it |
+| `>>` | Append stdout to a file |
+| `2>` | Redirect stderr to a file |
+| **Pipe operator** | Sends stdout into another command |
+
+Variables in bash are simple but picky: **no spaces around `=`**.
+
+```bash
+NAME="John"
+AGE=30
+echo "Hello, $NAME"
+
+echo $HOME      # home directory
+echo $USER      # current user
+echo $PATH      # where the shell looks for commands
+```
+
+**Command substitution** captures the output of a command:
+
+```bash
+CURRENT_DATE=$(date +%Y-%m-%d)
+echo "Today is $CURRENT_DATE"
+```
+
+### Writing a shell script
+
+**ELI5:** a script is a recipe card the shell can replay — steps, ingredients, and a few safety checks.
+
+Every script starts with a **shebang** and needs execute permission:
+
+```bash
+#!/bin/bash
+
+NAME=$1
+
+if [ -z "$NAME" ]; then
+    echo "Usage: $0 <name>"
+    exit 1
+fi
+
+echo "Welcome to Bash scripting, $NAME!"
+```
+
+```bash
+chmod +x script.sh
+./script.sh Ada
+```
+
+The building blocks:
+
+| Concept | Example | Notes |
+| :--- | :--- | :--- |
+| Positional argument | `$1`, `$2` | `$0` is the script name |
+| Argument count | `$#` | Useful for validation |
+| Exit status | `$?` | `0` means success |
+| Condition | `if [ -f file ]; then ... fi` | Spaces inside brackets matter |
+| Loop | `for i in {1..3}; do ... done` | Also `while` |
+| Array | `arr+=("value")`; `${arr[@]}` | Append and expand |
+| Function | `my_func() { ... }` | Reuse logic |
+| Exit | `exit 1` | Stop with a failure code |
+
+A conditional example:
+
+```bash
+if [ -f "/etc/passwd" ]; then
+    echo "File exists."
+else
+    echo "File not found."
+fi
+```
+
+A loop example:
+
+```bash
+for i in {1..3}; do
+    echo "Iteration $i"
+done
+```
+
+Good scripts validate their inputs early. If a required directory is missing, fail with a clear message instead of deleting the wrong thing later.
+
+### Scheduling with cron
+
+**ELI5:** cron is an alarm clock for commands — you tell it what to run and when, and it keeps doing it.
+
+`cron` is the classic Unix scheduler. You edit your schedule with `crontab -e` and list it with `crontab -l`.
+
+```text
+* * * * * /path/to/command.sh
+│ │ │ │ │
+│ │ │ │ └── day of week (0–6, Sunday = 0)
+│ │ │ └──── month (1–12)
+│ │ └────── day of month (1–31)
+│ └──────── hour (0–23)
+└────────── minute (0–59)
+```
+
+| Schedule | Meaning |
+| :--- | :--- |
+| `0 2 * * *` | Every day at 02:00 |
+| `*/15 * * * *` | Every 15 minutes |
+| `0 0 * * 1` | Every Monday at midnight |
+
+Cron runs in a minimal environment, so use absolute paths for scripts and log files. And make sure the cron service is actually running; in containers and lab environments it often is not started by default.
+
+### Hands-on lab: a scheduled backup script
+
+**Scenario:** write a bash script that backs up files modified in the last 24 hours from a target directory into a destination directory, then schedule it with cron. This was the final project for the Linux course, and it is a good example of how small shell pieces combine into something genuinely useful.
+
+The script accepts two arguments: the directory to back up and the directory where the archive should go.
+
+```bash
+#!/bin/bash
+
+if [[ $# != 2 ]]; then
+    echo "backup.sh target_directory_name destination_directory_name"
+    exit 1
+fi
+
+if [[ ! -d $1 ]] || [[ ! -d $2 ]]; then
+    echo "Invalid directory path provided"
+    exit 1
+fi
+
+targetDirectory=$1
+destinationDirectory=$2
+```
+
+The key steps:
+
+1. Capture the current timestamp in seconds.
+2. Build a timestamped archive name.
+3. Resolve both directories to absolute paths.
+4. Compute the cutoff for "modified in the last 24 hours."
+5. Loop over the files, compare modification times, and collect the recent ones.
+6. Archive the collected files and move the archive to the destination.
+
+```bash
+currentTS=$(date +%s)
+backupFileName="backup-$currentTS.tar.gz"
+
+origAbsPath=$(pwd)
+cd "$destinationDirectory" || exit
+destDirAbsPath=$(pwd)
+
+cd "$origAbsPath" || exit
+cd "$targetDirectory" || exit
+
+yesterdayTS=$((currentTS - 24 * 60 * 60))
+
+declare -a toBackup
+
+for file in *; do
+    if [[ $(date -r "$file" +%s) -gt $yesterdayTS ]]; then
+        toBackup+=("$file")
+    fi
+done
+
+tar -czvf "$backupFileName" "${toBackup[@]}"
+mv "$backupFileName" "$destDirAbsPath"
+```
+
+Make it executable and test it:
+
+```bash
+chmod +x backup.sh
+ls -l backup.sh
+
+wget <important-documents-zip-url>
+unzip -DDo important-documents.zip
+touch important-documents/*
+
+./backup.sh important-documents .
+ls -l backup-*.tar.gz
+```
+
+The `touch` step matters: it updates the modification times so the files count as "recent." Without it, the 24-hour filter may skip everything.
+
+Then schedule it. During testing, run it every minute so you do not have to wait a day:
+
+```bash
+*/1 * * * * /usr/local/bin/backup.sh /home/project/important-documents /home/project
+```
+
+After you confirm that archives are appearing, change the schedule to a daily run:
+
+```bash
+0 0 * * * /usr/local/bin/backup.sh /home/project/important-documents /home/project
+```
+
+Copy the script somewhere on `PATH` so cron can find it:
+
+```bash
+sudo cp backup.sh /usr/local/bin/
+sudo service cron start
+crontab -l
+```
+
+> **Gotcha:** cron does not expand your interactive shell environment. Use absolute paths, quote variables, and check that the cron daemon is running. If the script works manually but not from cron, the environment is usually the culprit.
+
+> **Version note:** the exact cron service command depends on the environment. On systemd systems it is usually `sudo systemctl start cron` or `sudo systemctl start crond`.
+
+### Pitfalls to remember
+
+- **Quoting:** unquoted variables break on spaces. Use `"$variable"`.
+- **Paths:** relative paths depend on where the script was started. Use absolute paths in cron.
+- **Permissions:** a script without `chmod +x` will not run directly.
+- **Destructive commands:** `rm -rf` and `mv` do exactly what you told them, immediately.
+- **Silent failures:** check exit codes and log output; a script that "ran" may still have failed.
+
+### Mini cheat sheet
+
+```bash
+# navigation
+pwd; cd /path; cd ..; ls -la
+
+# files
+mkdir -p data/raw; touch file.txt; cp -r src dst; mv old new; rm -rf tmp
+
+# permissions
+chmod 755 script.sh; chmod u+x script.sh; chown user:group file
+
+# text
+head -n 20 file; tail -f log; grep -i "error" file; wc -l file
+cut -d',' -f1 data.csv; sort -n numbers.txt; sort -u names.txt
+
+# network
+curl -O https://example.com/data.csv; wget https://example.com/data.csv
+ss -tulpn; ip a
+
+# archive
+tar -czvf backup.tar.gz folder/; tar -xzvf backup.tar.gz -C /target
+
+# pipes and redirection
+grep "ERROR" app.log | wc -l > errors.txt
+command >> output.log 2>&1
+
+# scripting
+#!/bin/bash
+set -e
+NAME=$1
+if [ -z "$NAME" ]; then echo "usage: $0 <name>"; exit 1; fi
+
+# cron
+crontab -e
+crontab -l
+0 2 * * * /usr/local/bin/backup.sh /data /backups
+```
+
+---
+
+## Chapter 3 — Python for data work
+
+### Python and Jupyter
+
+**ELI5:** Python is the language; Jupyter is a notebook where you can write a sentence, run it, and see the answer immediately.
+
+**Python** is a readable, general-purpose language. It is popular in data work because the syntax is approachable and the library ecosystem is enormous.
+
+A **Jupyter Notebook** is an interactive document made of cells:
+
+- **Code cells** run Python and show output underneath.
+- **Markdown cells** hold headings, notes, and explanations.
+- Run a cell with **Shift + Enter**.
+
+Notebooks are great for exploration: you can run code piece by piece, see tables and charts inline, and mix code with explanations. They are less great for production pipelines, where you want scripts, tests, and version control.
+
+The kernel is the Python process running your code. If things get weird, restart the kernel and run all cells. Out-of-order execution is a common source of confusing bugs.
+
+A standard notebook workflow:
+
+```text
+import libraries → load data → explore → clean → analyze → save
+```
+
+### Types and variables
+
+**ELI5:** a type is the kind of box a value lives in — a number box, a text box, a true/false box.
+
+| Type | Meaning | Example |
+| :--- | :--- | :--- |
+| `int` | Whole number | `42`, `-7` |
+| `float` | Decimal number | `3.14`, `2.0` |
+| `str` | Text | `"hello"`, `'42'` |
+| `bool` | True or false | `True`, `False` |
+| `NoneType` | No value | `None` |
+
+```python
+type(42)        # int
+type(3.14)      # float
+type("hi")      # str
+type(True)      # bool
+```
+
+Type conversion is explicit:
+
+```python
+int("42")       # 42
+float("3.5")    # 3.5
+str(42)         # "42"
+```
+
+Python is dynamically typed, so a variable can change type. That does not mean it should. Predictable types make code easier to debug.
+
+A **variable** is a name pointing to a value. An **expression** is anything that evaluates to a value. Assignment uses `=`, which is not the same as mathematical equality.
+
+```python
+price = 10
+qty = 3
+total = price * qty      # 30
+```
+
+Naming rules: letters, digits, and underscores; cannot start with a digit; case-sensitive. Use `snake_case` for readability.
+
+Operators:
+
+| Group | Operators | Notes |
+| :--- | :--- | :--- |
+| Arithmetic | `+ - * / // % **` | `/` returns a float; `//` is floor division |
+| Comparison | `== != < > <= >=` | Return `True` or `False` |
+| Logical | `and`, `or`, `not` | Combine conditions |
+
+When in doubt about precedence, add parentheses. Future you will appreciate it.
+
+### Strings
+
+**ELI5:** a string is a necklace of characters — you can count the beads, slice them, and swap them out.
+
+Strings are **immutable**: methods return a new string instead of changing the original. Indexing starts at `0`; negative indexes count from the end.
+
+```python
+s = "Data Science"
+s[0]        # 'D'
+s[-1]       # 'e'
+s[0:4]      # 'Data'
+s[::-1]     # reversed
+```
+
+Common methods:
+
+| Method | Result |
+| :--- | :--- |
+| `len(s)` | Length |
+| `s.upper()`, `s.lower()`, `s.title()` | Change case |
+| `s.strip()` | Remove surrounding whitespace |
+| `s.replace("a", "b")` | Replace substrings |
+| `s.split(",")` | String to list |
+| `",".join(items)` | List to string |
+| `s.find("x")` | Position or `-1` |
+| `s.startswith("x")`, `s.endswith("x")` | Prefix/suffix check |
+| `s.count("x")` | Count occurrences |
+| `s.isdigit()`, `s.isalpha()` | Character checks |
+
+f-strings are the modern formatting tool:
+
+```python
+name = "Ada"
+score = 98.5
+print(f"{name} scored {score:.1f}%")
+```
+
+Escape characters: `\n` newline, `\t` tab, `\\` backslash.
+
+### Lists, tuples, dictionaries, sets
+
+**ELI5:** a list is a shopping basket you can add to and rearrange; a tuple is a sealed box; a dictionary is a phone book; a set is a guest list with no duplicates.
+
+#### Lists
+
+Ordered and mutable:
+
+```python
+nums = [1, 2, 3]
+nums.append(4)
+nums.insert(0, 0)
+nums.extend([5, 6])
+nums.remove(3)
+last = nums.pop()
+nums.sort()
+```
+
+Lists can hold mixed types, including other lists. Indexing and slicing work like strings.
+
+List comprehensions are the Pythonic way to build a list:
+
+```python
+squares = [n * n for n in range(5)]        # [0, 1, 4, 9, 16]
+evens = [n for n in range(10) if n % 2 == 0]
+```
+
+#### Tuples
+
+Ordered and immutable:
+
+```python
+point = (3, 4)
+x, y = point          # unpacking
+single = (5,)         # one-item tuple needs a comma
+```
+
+Use tuples for fixed groups of values such as coordinates or database rows. Tuples can be dictionary keys; lists cannot.
+
+#### Dictionaries
+
+Key-value pairs:
+
+```python
+person = {"name": "Ada", "age": 36}
+
+person["name"]              # "Ada"
+person.get("job", "unknown")  # safe lookup with default
+person["city"] = "London"   # add or update
+del person["age"]
+
+for key, value in person.items():
+    print(key, value)
+```
+
+Keys must be unique and immutable. Dictionaries preserve insertion order in modern Python. They are excellent for lookup tables, JSON-like data, counting, and grouping.
+
+#### Sets
+
+Unordered collections of unique items:
+
+```python
+a = {1, 2, 3}
+b = {3, 4}
+
+a & b    # {3}
+a | b    # {1, 2, 3, 4}
+a - b    # {1, 2}
+a ^ b    # {1, 2, 4}
+```
+
+Create an empty set with `set()`, not `{}` (that makes a dictionary). Sets are fast for membership checks and removing duplicates.
+
+### Conditions, loops, and comprehensions
+
+**ELI5:** conditions are forks in the road; loops are robots repeating a task; comprehensions are the compact version of a simple loop.
+
+```python
+score = 85
+if score >= 90:
+    grade = "A"
+elif score >= 80:
+    grade = "B"
+else:
+    grade = "C"
+```
+
+Indentation defines blocks; four spaces is the convention. Empty values are falsy: `""`, `[]`, `{}`, `0`, `None`, and `False`.
+
+Loops:
+
+```python
+for item in [1, 2, 3]:
+    print(item)
+
+for i in range(5):        # 0, 1, 2, 3, 4
+    print(i)
+
+for i, value in enumerate(["a", "b"]):
+    print(i, value)
+
+for left, right in zip([1, 2], ["a", "b"]):
+    print(left, right)
+```
+
+`while` repeats while a condition is true. Make sure something changes inside the loop, or it will run forever.
+
+Loop control:
+
+- `break` exits the loop immediately.
+- `continue` skips to the next iteration.
+- An `else` block on a loop runs if the loop finished without `break`.
+
+Comprehensions replace simple loops:
+
+```python
+names = ["ada", "bob"]
+upper = [n.upper() for n in names]
+squares = {n: n * n for n in range(5)}
+```
+
+### Functions
+
+**ELI5:** a function is a recipe with a name — give it ingredients, it gives you back a dish.
+
+```python
+def add(a, b):
+    return a + b
+
+add(2, 3)    # 5
+```
+
+Key ideas:
+
+- **Parameters** are in the definition; **arguments** are what you pass.
+- `return` sends a value back. Without it, the function returns `None`.
+- Default arguments: `def greet(name="friend")`.
+- Keyword arguments: `greet(name="Ada")`.
+- `*args` collects extra positional arguments as a tuple.
+- `**kwargs` collects extra keyword arguments as a dictionary.
+- Variables created inside a function are local.
+- Docstrings document what a function does.
+
+```python
+def describe(name, *scores, **meta):
+    """Summarize a student."""
+    return f"{name}: {sum(scores) / len(scores):.1f}"
+```
+
+A **lambda** is a tiny anonymous function:
+
+```python
+square = lambda x: x * x
+```
+
+Functions are values, so they can be passed to `map`, `filter`, and `sorted(key=...)`. Good functions do one thing, have clear names, and avoid side effects.
+
+### Exception handling
+
+**ELI5:** a safety net under the trapeze — if something goes wrong, you catch it instead of crashing the whole show.
+
+```python
+try:
+    x = int("abc")
+except ValueError:
+    print("That was not a number")
+finally:
+    print("Done")
+```
+
+- `try` runs the risky code.
+- `except` catches a specific error.
+- `else` runs if no error occurred.
+- `finally` always runs, usually for cleanup.
+
+Catch specific exceptions, not a bare `except:`. Broad catches hide bugs.
+
+Common exceptions:
+
+| Exception | Typical cause |
+| :--- | :--- |
+| `ValueError` | Right type, bad value |
+| `TypeError` | Wrong type |
+| `KeyError` | Missing dictionary key |
+| `IndexError` | List index out of range |
+| `FileNotFoundError` | Missing file |
+| `ZeroDivisionError` | Division by zero |
+
+You can raise your own errors with `raise ValueError("bad input")`. In data pipelines, catch the error, log it, and decide whether to retry, skip, or fail loudly.
+
+### Classes and objects
+
+**ELI5:** a class is a cookie cutter; an object is a cookie made from it.
+
+```python
+class Dog:
+    def __init__(self, name):
+        self.name = name
+
+    def bark(self):
+        return f"{self.name} says woof"
+
+d = Dog("Rex")
+d.bark()        # "Rex says woof"
+```
+
+- A **class** bundles data (attributes) and behavior (methods).
+- An **object** is one instance of a class.
+- `__init__` runs when an object is created.
+- `self` refers to the current object.
+- Inheritance lets a child class reuse and extend a parent.
+- `super()` calls the parent's version of a method.
+- Dunder methods such as `__str__` and `__len__` customize behavior.
+
+Why it matters: libraries are built from classes. A DataFrame is an object. A model is an object. Understanding classes makes library APIs less mysterious.
+
+### Reading and writing files
+
+**ELI5:** files are notebooks on a shelf — open one, read or write, then close it.
+
+```python
+with open("data.txt", "r", encoding="utf-8") as f:
+    content = f.read()
+
+with open("out.txt", "w", encoding="utf-8") as f:
+    f.write("hello\n")
+```
+
+| Mode | Meaning |
+| :--- | :--- |
+| `"r"` | Read (default) |
+| `"w"` | Write, overwriting the file |
+| `"a"` | Append |
+| `"x"` | Create, failing if the file exists |
+| `"b"` | Binary mode |
+| `"t"` | Text mode (default) |
+
+Always use `with` so the file closes even when an error occurs. For large files, iterate line by line instead of loading everything into memory. For CSV without pandas, the built-in `csv` module has `reader`, `DictReader`, and `writer`.
+
+### Pandas
+
+**ELI5:** pandas is a super-powered spreadsheet inside Python — rows, columns, filters, and grouping, all in code.
+
+A **DataFrame** is a table with labeled rows and columns. A **Series** is a single labeled column.
+
+```python
+import pandas as pd
+
+df = pd.read_csv("data.csv")
+df.head()
+df.info()
+df.describe()
+df.shape
+df.columns
+df.isnull().sum()
+```
+
+Selecting data:
+
+```python
+df["age"]                    # one column (Series)
+df[["name", "age"]]          # multiple columns (DataFrame)
+df.loc[0, "name"]            # label-based
+df.iloc[0, 1]                # position-based
+df[df["age"] > 30]           # boolean filter
+df.query("age > 30")         # readable filter
+```
+
+Cleaning:
+
+```python
+df.dropna()
+df.fillna(0)
+df["age"].fillna(df["age"].mean())
+df.drop_duplicates()
+df.rename(columns={"old": "new"})
+df["age"].astype(int)
+df["name"].str.strip().str.lower()
+pd.to_datetime(df["date"])
+```
+
+Transforming:
+
+```python
+df["total"] = df["price"] * df["qty"]
+df["total"] = df.apply(lambda row: row["price"] * row["qty"], axis=1)
+df.groupby("city")["sales"].sum()
+df.groupby("city").agg({"sales": "sum", "qty": "mean"})
+df.sort_values("sales", ascending=False)
+pd.merge(left, right, on="id", how="inner")
+pd.concat([df1, df2])
+df.pivot_table(index="city", columns="year", values="sales", aggfunc="sum")
+df["category"].value_counts()
+```
+
+Handy extras: `df.sample(5)`, `df.nunique()`, `df.corr()`, `pd.get_dummies(df)`, and `df.to_numpy()`.
+
+### NumPy
+
+**ELI5:** NumPy is a box of numbered tiles you can move, slice, and do math on all at once — much faster than looping one by one.
+
+```python
+import numpy as np
+
+a = np.array([1, 2, 3])
+np.arange(0, 10, 2)      # [0 2 4 6 8]
+np.linspace(0, 1, 5)     # five evenly spaced values
+
+a * 2                    # vectorized math
+a.mean()
+a[a > 2]                 # boolean masking
+```
+
+Two-dimensional arrays:
+
+```python
+m = np.array([[1, 2], [3, 4]])
+m.shape          # (2, 2)
+m[0, 1]          # row 0, column 1
+m[:, 0]          # first column
+m.T              # transpose
+m.reshape(4, 1)
+m @ m            # matrix multiplication
+```
+
+NumPy is the foundation under pandas, scikit-learn, and deep learning. If you are looping over numbers in Python, there is probably a vectorized NumPy or pandas way to do it faster.
+
+### APIs and REST
+
+**ELI5:** an API is a waiter — you ask for something in a specific way, and it brings back exactly what you ordered.
+
+An **API** is a contract for how software talks to software. You send a request and get a response, usually JSON.
+
+| Method | Purpose |
+| :--- | :--- |
+| `GET` | Read data |
+| `POST` | Create |
+| `PUT` / `PATCH` | Update |
+| `DELETE` | Remove |
+
+Common status codes:
+
+| Code | Meaning |
+| :--- | :--- |
+| `200` | OK |
+| `201` | Created |
+| `400` | Bad request |
+| `401` | Unauthorized |
+| `403` | Forbidden |
+| `404` | Not found |
+| `500` | Server error |
+
+```python
+import requests
+
+r = requests.get("https://api.example.com/data", params={"limit": 10}, timeout=10)
+r.raise_for_status()
+data = r.json()
+```
+
+Always set a timeout. Handle retries with backoff for timeouts and 5xx errors. Never hard-code secrets; use environment variables. Large APIs return paginated results, so loop until there is no next page.
+
+### Web scraping
+
+**ELI5:** if a website will not give you a clean data file, scraping is reading the page and copying out the useful bits yourself.
+
+```python
+import requests
+from bs4 import BeautifulSoup
+
+html = requests.get("https://example.com", timeout=10).text
+soup = BeautifulSoup(html, "html.parser")
+
+soup.title.text
+soup.find("h1").text
+soup.find_all("a")
+soup.select("table tr")
+```
+
+For simple tables, `pandas.read_html` is often enough:
+
+```python
+tables = pd.read_html("https://example.com/page")
+df = tables[0]
+```
+
+Scraping rules:
+
+- Check the site's terms of service and `robots.txt`.
+- Do not hammer the server; add delays.
+- Respect copyright and personal-data laws.
+- Prefer an official API when one exists.
+- Expect messy output and clean it afterward.
+
+### File formats
+
+**ELI5:** data comes in different containers — boxes, bags, and compressed crates — and Python can open most of them.
+
+| Format | Read | Write | Best for |
+| :--- | :--- | :--- | :--- |
+| CSV / TSV | `pd.read_csv` | `df.to_csv` | Sharing, small datasets |
+| Excel | `pd.read_excel` | `df.to_excel` | Business users |
+| JSON | `pd.read_json`, `json.load` | `json.dumps` | APIs and nested data |
+| XML | `ElementTree`, `lxml` | Library-specific | Legacy enterprise data |
+| Parquet | `pd.read_parquet` | `df.to_parquet` | Large analytical datasets |
+| SQL | `pd.read_sql` | `df.to_sql` | Database-backed data |
+
+If characters look broken, try `encoding="utf-8"` or `"latin-1"`. If a file is huge, read only the columns you need and consider chunking.
+
+### One-page recap
+
+**ELI5:** the whole chapter in one breath.
+
+- Python is the language; **Jupyter** is the interactive notebook.
+- Types: `int`, `float`, `str`, `bool`, `None`.
+- Variables label values; expressions compute them.
+- Strings are immutable sequences with useful methods.
+- Lists change, tuples do not, dictionaries map keys to values, sets hold unique items.
+- Conditions branch; loops repeat; comprehensions do both compactly.
+- Functions package reusable logic; `*args` and `**kwargs` add flexibility.
+- Exceptions catch failures gracefully.
+- Classes bundle data and behavior.
+- Files are opened with `with open(...)`.
+- Pandas handles tabular data; NumPy handles fast numeric arrays.
+- APIs let you request data; REST is the common style.
+- Scraping extracts HTML data, ethically and carefully.
+- CSV, Excel, JSON, XML, and Parquet each have a job.
+
+### Mini cheat sheet
+
+```python
+# basics
+name = "Ada"; age = 36; pi = 3.14; ok = True
+type(x); int("5"); str(5); float("2.5")
+
+# strings
+s.upper(); s.lower(); s.strip(); s.split(","); ",".join(items)
+f"{name} is {age}"
+
+# lists
+lst.append(x); lst.extend(other); lst.pop(); lst.sort()
+[n * n for n in range(5)]
+
+# dictionaries
+d["k"]; d.get("k", default); d.keys(); d.items()
+{k: v for k, v in d.items()}
+
+# sets
+a | b; a & b; a - b; set(my_list)
+
+# control
+if x > 0: ...
+for i, v in enumerate(lst): ...
+while cond: ...
+break; continue
+
+# functions
+def f(a, b=1, *args, **kwargs):
+    return a + b
+lambda x: x * 2
+
+# exceptions
+try:
+    ...
+except ValueError as e:
+    ...
+finally:
+    ...
+
+# files
+with open("f.txt", "r", encoding="utf-8") as f:
+    data = f.read()
+
+# pandas
+df = pd.read_csv("f.csv")
+df.head(); df.info(); df.describe()
+df["col"]; df[df["x"] > 0]; df.loc[0, "col"]
+df.groupby("k")["v"].sum()
+pd.merge(a, b, on="id", how="inner")
+
+# numpy
+a = np.array([1, 2, 3]); a * 2; a.mean()
+m = np.array([[1, 2], [3, 4]]); m.T; m @ m
+
+# requests
+r = requests.get(url, timeout=10); r.json()
+```
+
+---
+
+## Chapter 4 — Python for data engineering
+
+Chapter 3 was about using Python to explore data. This chapter is about using Python as a worker: pulling data in, cleaning it, putting it somewhere useful, and making the whole thing reliable enough to run again next week.
+
+### IDE and project setup
+
+**ELI5:** an IDE is a kitchen with everything in reach — stove, knives, cutting board, and a fridge that tells you when something is spoiled.
+
+An **IDE** is an editor plus tools for running, debugging, and organizing code. Common choices are VS Code, PyCharm, JupyterLab, and Spyder. The useful features are syntax highlighting, autocomplete, a debugger, an integrated terminal, linting, and extensions for Python, Jupyter, Git, and databases.
+
+A **virtual environment** is a private sandbox of packages for one project. It prevents two projects from fighting over library versions.
+
+```bash
+python -m venv .venv
+
+# Windows
+.venv\Scripts\activate
+
+# macOS / Linux
+source .venv/bin/activate
+
+pip install pandas requests
+pip freeze > requirements.txt
+```
+
+The rule of thumb: one project = one folder = one virtual environment = one requirements file.
+
+### ETL in Python
+
+**ELI5:** making orange juice — pick oranges (extract), squeeze and filter them (transform), pour into bottles (load).
+
+**ETL** is the three core stages of moving data:
+
+| Stage | What happens | Python tools |
+| :--- | :--- | :--- |
+| **Extract** | Get data from files, APIs, websites, databases | `requests`, `pandas`, `bs4`, database drivers |
+| **Transform** | Clean, filter, standardize, enrich, aggregate | `pandas`, NumPy, plain Python |
+| **Load** | Write to CSV, database, or warehouse | `pandas`, `sqlite3`, database drivers |
+
+A minimal ETL script:
+
+```python
+import pandas as pd
+
+# Extract
+df = pd.read_csv("raw_sales.csv")
+
+# Transform
+df = df.dropna()
+df["total"] = df["price"] * df["qty"]
+df["date"] = pd.to_datetime(df["date"])
+
+# Load
+df.to_csv("clean_sales.csv", index=False)
+```
+
+That is the happy path. Production adds concerns:
+
+- **Logging and error handling** — know what happened and where it failed.
+- **Idempotency** — running twice should not duplicate data.
+- **Validation** — check row counts, schema, nulls, and ranges before loading.
+- **Scheduling** — cron, Airflow, or a cloud job.
+- **Observability** — alerts when the pipeline is late or empty.
+
+The course labs follow a simple pattern: **acquire → process → save → verify**.
+
+### Extracting with APIs and scraping
+
+**ELI5:** an API is a drive-through window; scraping is reading the restaurant's menu board and copying it down yourself.
+
+For APIs, the engineering concerns are reliability and secrets:
+
+```python
+import os
+import requests
+
+headers = {"Authorization": f"Bearer {os.environ['API_TOKEN']}"}
+
+r = requests.get(
+    "https://api.example.com/data",
+    headers=headers,
+    params={"limit": 100},
+    timeout=10,
+)
+r.raise_for_status()
+data = r.json()
+```
+
+- Read tokens from environment variables, never from source code.
+- Set timeouts.
+- Retry transient failures with backoff.
+- Handle pagination explicitly.
+- Log the request and response status.
+
+For scraping, use `requests` plus BeautifulSoup, and prefer an official API or a bulk download when one exists. Respect `robots.txt`, terms of service, rate limits, and privacy laws.
+
+### Accessing databases from Python
+
+**ELI5:** Python is the delivery driver; the database is the warehouse. You knock, hand over a list, and get boxes back.
+
+Python talks to databases through a **driver or connector**. The standard interface is **DB-API**:
+
+```text
+connect → cursor → execute → fetch → commit → close
+```
+
+SQLite is built into Python, which makes it perfect for small projects and labs:
+
+```python
+import sqlite3
+
+conn = sqlite3.connect("data.db")
+cur = conn.cursor()
+
+cur.execute("CREATE TABLE IF NOT EXISTS sales (id INTEGER, amount REAL)")
+cur.execute("INSERT INTO sales VALUES (?, ?)", (1, 99.5))
+conn.commit()
+
+cur.execute("SELECT * FROM sales")
+rows = cur.fetchall()
+
+conn.close()
+```
+
+Always use `?` placeholders for values. Do not build SQL with f-strings; that is how SQL injection happens.
+
+A context manager closes the connection automatically:
+
+```python
+with sqlite3.connect("data.db") as conn:
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM sales")
+    rows = cur.fetchall()
+```
+
+Pandas can read and write SQL directly:
+
+```python
+import pandas as pd
+
+conn = sqlite3.connect("data.db")
+df = pd.read_sql_query("SELECT * FROM sales", conn)
+df.to_sql("clean_sales", conn, if_exists="replace", index=False)
+conn.close()
+```
+
+Other databases follow the same pattern with a different driver:
+
+| Database | Driver |
+| :--- | :--- |
+| PostgreSQL | `psycopg2` |
+| MySQL | `mysql-connector-python` or `pymysql` |
+| IBM Db2 | `ibm_db` |
+
+**SQLAlchemy** sits on top and smooths over engine differences. The habits are the same: open late, close early, commit writes, and never leave a connection dangling.
+
+### Style and static analysis
+
+**ELI5:** clean code is a tidy kitchen — labeled jars, sharp knives, and everything back where it belongs, so the next cook is not lost.
+
+**PEP 8** is Python's official style guide. The rules that matter most:
+
+- Four spaces per indent; never tabs.
+- `snake_case` for variables and functions.
+- `PascalCase` for classes.
+- `UPPER_CASE` for constants.
+- Two blank lines between top-level functions and classes.
+- Lines under roughly 79–88 characters.
+- Imports at the top, grouped: standard library, third-party, local.
+- Spaces around operators.
+
+Write docstrings for modules, classes, and functions:
+
+```python
+def clean_amount(value):
+    """Convert a currency string like '$1,200' to a float."""
+    return float(value.replace("$", "").replace(",", ""))
+```
+
+Comments should explain *why*, not *what*. Keep functions small, avoid repeated logic, and use `if __name__ == "__main__":` so a module can be imported without running the script.
+
+**Static analysis** inspects code without executing it. It catches style violations, unused imports, suspicious patterns, and sometimes security issues.
+
+| Tool | Job |
+| :--- | :--- |
+| `pylint` | Style, errors, and code smells |
+| `flake8` | Style plus simple errors |
+| `pycodestyle` | Pure PEP 8 checks |
+| `mypy` | Static type checking |
+| `bandit` | Security checks |
+| `black` | Opinionated auto-formatter |
+| `isort` | Sorts imports |
+
+```bash
+pylint my_script.py
+flake8 .
+mypy my_script.py
+```
+
+The goal is not a perfect score. The goal is fewer bugs and consistent code. Many teams enforce these checks in CI so bad code cannot merge.
+
+### Unit testing
+
+**ELI5:** taste-testing each ingredient before cooking the whole meal — if the salt is wrong, you find out before serving guests.
+
+A **unit test** checks one small piece of code in isolation. A **test case** has a known input and an expected output. An **assertion** checks that actual equals expected. The pattern is **Arrange → Act → Assert**.
+
+```python
+import unittest
+
+def add(a, b):
+    return a + b
+
+class TestAdd(unittest.TestCase):
+    def test_positive(self):
+        self.assertEqual(add(2, 3), 5)
+
+if __name__ == "__main__":
+    unittest.main()
+```
+
+`pytest` is simpler and very popular:
+
+```python
+def test_add():
+    assert add(2, 3) == 5
+```
+
+Useful testing ideas:
+
+- **Fixtures** provide reusable setup such as temp files or a test database.
+- **Mocking** replaces a real API or database with a fake so tests stay fast.
+- Test edge cases: empty input, zero, negatives, wrong types, and large values.
+- **TDD** means writing the test first, then the code to pass it.
+
+Run tests with `python -m unittest` or `pytest`. Tests are documentation and a safety net for refactoring.
+
+### Packaging
+
+**ELI5:** packaging is putting your recipe into a labeled box so other people can open it and cook without calling you.
+
+| Concept | Meaning |
+| :--- | :--- |
+| **Module** | A single `.py` file |
+| **Package** | A folder of modules with an `__init__.py` |
+| **`pip`** | Installs packages from PyPI |
+| **`requirements.txt`** | Project dependency list |
+| **`pyproject.toml`** | Modern project metadata and build config |
+| **`setup.py` / `setup.cfg`** | Older packaging configuration |
+
+```bash
+python -m build
+pip install -e .
+```
+
+`python -m build` produces a wheel (`.whl`) and a source archive. `pip install -e .` installs the project in editable mode, which is useful during development. Publishing to PyPI uses `twine` after building.
+
+A layout that works:
+
+```text
+my_project/
+├── my_package/
+│   ├── __init__.py
+│   └── core.py
+├── tests/
+│   └── test_core.py
+├── pyproject.toml
+└── README.md
+```
+
+Packaging matters because data pipelines are software. They need to be installed, versioned, and reused.
+
+### The whole project flow
+
+**ELI5:** the whole job, start to finish — shop, prep, cook, plate, and clean up.
+
+```text
+1. Set up      folder, virtual environment, dependencies
+2. Extract     website, API, CSV, or database
+3. Inspect     shape, types, missing values, weird rows
+4. Transform   clean, convert units, rename, filter, aggregate
+5. Validate    row counts, nulls, ranges, duplicates
+6. Load        CSV, SQLite, or another database
+7. Log         what happened and how long it took
+8. Test        unit tests for the transformation functions
+9. Package     make it importable and installable
+10. Schedule   cron, Airflow, or a cloud job
+```
+
+Debug on a small sample first, then scale up. Most pipeline failures are easier to see with ten rows than with ten million.
+
+### Hands-on lab: the World's Largest Banks ETL
+
+**Scenario:** a research organization wants a repeatable script that compiles the top 10 largest banks by market capitalization, converts the values from USD into GBP, EUR, and INR, saves the result as a CSV, loads it into a SQLite table, and logs every stage.
+
+This was the final project for the Python for Data Engineering course. The inputs and outputs are:
+
+| Item | Value |
+| :--- | :--- |
+| Script | `banks_project.py` |
+| Source | Archived Wikipedia page, "List of largest banks" |
+| Exchange rates | `exchange_rate.csv` with `Currency` and `Rate` columns |
+| Output CSV | `Largest_banks_data.csv` |
+| Database | `Banks.db` |
+| Table | `Largest_banks` |
+| Log file | `code_log.txt` |
+
+The final table has five columns: `Name`, `MC_USD_Billion`, `MC_GBP_Billion`, `MC_EUR_Billion`, and `MC_INR_Billion`.
+
+#### Step 1 — Log progress
+
+Every stage writes a timestamped line to `code_log.txt`:
+
+```python
+from datetime import datetime
+
+def log_progress(message):
+    timestamp_format = "%Y-%h-%d-%H-%M-%S"
+    timestamp = datetime.now().strftime(timestamp_format)
+    with open("./code_log.txt", "a") as f:
+        f.write(timestamp + " : " + message + "\n")
+```
+
+The log points are:
+
+| After | Message |
+| :--- | :--- |
+| Declaring known values | `Preliminaries complete. Initiating ETL process` |
+| `extract()` | `Data extraction complete. Initiating Transformation process` |
+| `transform()` | `Data transformation complete. Initiating Loading process` |
+| `load_to_csv()` | `Data saved to CSV file` |
+| SQLite connection | `SQL Connection initiated` |
+| `load_to_db()` | `Data loaded to Database as a table, Executing queries` |
+| `run_query()` | `Process Complete` |
+| Closing the connection | `Server Connection closed` |
+
+#### Step 2 — Extract
+
+The source page has a table under "By market capitalization." Scrape the rows, take the bank name and market cap, and build a DataFrame.
+
+```python
+import pandas as pd
+import requests
+from bs4 import BeautifulSoup
+
+def extract(url, table_attribs):
+    page = requests.get(url, timeout=10).text
+    soup = BeautifulSoup(page, "html.parser")
+    table = soup.find_all("table", class_="wikitable")[0]
+
+    data = []
+    for row in table.find_all("tr")[1:]:
+        cols = row.find_all("td")
+        if len(cols) == 0:
+            continue
+        bank_name = cols[1].get_text().strip()
+        market_cap = float(cols[2].get_text().strip())
+        data.append([bank_name, market_cap])
+
+    return pd.DataFrame(data, columns=table_attribs)
+```
+
+Two details matter: skip the header row, and convert the market-cap text to `float` before building the DataFrame.
+
+#### Step 3 — Transform
+
+Read the exchange rates into a dictionary, then add the three converted columns:
+
+```python
+import numpy as np
+
+def transform(df, csv_path):
+    rates = pd.read_csv(csv_path).set_index("Currency").to_dict()["Rate"]
+
+    gbp_rate = float(rates["GBP"])
+    eur_rate = float(rates["EUR"])
+    inr_rate = float(rates["INR"])
+
+    df["MC_GBP_Billion"] = [np.round(x * gbp_rate, 2) for x in df["MC_USD_Billion"]]
+    df["MC_EUR_Billion"] = [np.round(x * eur_rate, 2) for x in df["MC_USD_Billion"]]
+    df["MC_INR_Billion"] = [np.round(x * inr_rate, 2) for x in df["MC_USD_Billion"]]
+
+    return df
+```
+
+The course asks you to print the EUR market cap of the fifth-largest bank. That is a useful sanity check: the number should look plausible relative to the USD value and the exchange rate.
+
+#### Step 4 — Load to CSV and SQLite
+
+```python
+import sqlite3
+
+def load_to_csv(df, output_path):
+    df.to_csv(output_path, index=False)
+
+def load_to_db(df, sql_connection, table_name):
+    df.to_sql(table_name, sql_connection, if_exists="replace", index=False)
+```
+
+```python
+sql_connection = sqlite3.connect("Banks.db")
+load_to_db(df, sql_connection, "Largest_banks")
+```
+
+#### Step 5 — Query the table
+
+```python
+def run_query(query_statement, sql_connection):
+    print(query_statement)
+    print(pd.read_sql(query_statement, sql_connection))
+    print()
+```
+
+```python
+run_query("SELECT * FROM Largest_banks", sql_connection)
+run_query("SELECT AVG(MC_GBP_Billion) FROM Largest_banks", sql_connection)
+run_query("SELECT Name FROM Largest_banks LIMIT 5", sql_connection)
+```
+
+#### Step 6 — Wire it together
+
+The bottom of the script defines the known values and calls the functions in order:
+
+```python
+url = "https://web.archive.org/web/20230908091635/https://en.wikipedia.org/wiki/List_of_largest_banks"
+table_attribs = ["Name", "MC_USD_Billion"]
+csv_path = "./exchange_rate.csv"
+output_path = "./Largest_banks_data.csv"
+db_name = "Banks.db"
+table_name = "Largest_banks"
+
+log_progress("Preliminaries complete. Initiating ETL process")
+
+df = extract(url, table_attribs)
+log_progress("Data extraction complete. Initiating Transformation process")
+
+df = transform(df, csv_path)
+log_progress("Data transformation complete. Initiating Loading process")
+
+load_to_csv(df, output_path)
+log_progress("Data saved to CSV file")
+
+conn = sqlite3.connect(db_name)
+log_progress("SQL Connection initiated")
+load_to_db(df, conn, table_name)
+log_progress("Data loaded to Database as a table, Executing queries")
+
+run_query("SELECT * FROM Largest_banks", conn)
+run_query("SELECT AVG(MC_GBP_Billion) FROM Largest_banks", conn)
+run_query("SELECT Name FROM Largest_banks LIMIT 5", conn)
+log_progress("Process Complete")
+
+conn.close()
+log_progress("Server Connection closed")
+```
+
+#### Step 7 — Run and verify
+
+```bash
+python3.11 banks_project.py
+```
+
+Check three things:
+
+1. `Largest_banks_data.csv` exists and has the converted columns.
+2. `Banks.db` contains the `Largest_banks` table.
+3. `code_log.txt` has one line per stage, in order.
+
+Before the final run, delete the old log so you can see a clean sequence:
+
+```bash
+rm code_log.txt
+python3.11 banks_project.py
+```
+
+> **Gotcha:** the archived Wikipedia page can change, and the table position or column names may shift. The lab expects the market-cap column to be renamed to `MC_USD_Billion`, and the values to be parsed as floats. If the schema breaks, inspect the HTML before changing the transformation logic.
+
+> **Gotcha:** the exchange-rate CSV may load rates as strings depending on the file. Convert them explicitly with `float()` before multiplying. A silent string multiplication or a wrong column name will produce nonsense columns that still look like DataFrames.
+
+### Pitfalls to remember
+
+- **Hard-coded paths and secrets** — use configuration and environment variables.
+- **No validation** — a pipeline that writes zero rows can still "succeed."
+- **No logging** — when it fails at 2 a.m., the log is the only witness.
+- **Non-idempotent loads** — rerunning should replace or upsert, not duplicate.
+- **Testing only the happy path** — empty files, missing columns, and bad types are normal.
+- **Ignoring encoding** — UTF-8 is a default, not a guarantee.
+
+### Series recap
+
+Part 1 was the foundation:
+
+- Data engineering is the discipline of reliable data movement and storage.
+- Linux and the shell are the operating system layer under almost every data system.
+- Python is the general-purpose worker for extraction, transformation, loading, testing, and packaging.
+- A good pipeline is repeatable, validated, logged, and documented.
+
+In **Part 2**, we move into the relational world: data modeling, SQL, database design, and the day-to-day work of a database administrator. That is where the data actually gets organized.
+
+
+
