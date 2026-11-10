@@ -47,19 +47,44 @@ const work = [
   },
   {
     role: "Data Engineer",
-    company: "Astro Sdn. Bhd. (via Valuelabs)",
-    period: "2023 - 2024",
+    company: "Valuelabs · Kuala Lumpur, Malaysia",
+    period: "Sep 2023 - Nov 2024",
     description:
-      "Migrated legacy auth system to SSO platform. Designed T-1 batch ETL pipelines using PySpark and AWS Glue. Built serverless orchestration with Step Functions and Lambda.",
+      "Data engineering for a major telecom & media client — migrating legacy systems to a modern serverless AWS data platform.",
+    highlights: [
+      "Designed and implemented ETL pipelines in AWS (Redshift, S3, Glue, Lambda, Step Functions, DynamoDB) to optimize daily batch data ingestion (PySpark/Python)",
+      "Designed loading patterns (upsert, incremental, truncate) driven by metadata configuration, with table-level reprocessing support",
+      "Ingested data from internal databases and external sources (APIs, event notifications, batch files) into the centralized data lake and warehouse",
+      "Built dashboard reports on QuickSight and automated dataset refreshes via the QuickSight API",
+      "Achieved cost reduction through S3 lifecycle policies, storage optimization, and legacy service decommissioning",
+      "Developed technical documentation and knowledge-transfer guides for pipeline architecture and operational runbooks",
+    ],
+    stack: [
+      { label: "Frameworks", items: ["PySpark", "Pandas", "Python", "Bash"] },
+      { label: "Cloud", items: ["AWS S3", "Lambda", "Step Functions", "Glue", "RDS", "Redshift", "DynamoDB", "QuickSight", "SNS"] },
+      { label: "Others", items: ["Pulumi (IaC)", "Git/Bitbucket", "Confluence"] },
+    ],
     logo: valuelabsLogo,
     status: "Completed",
   },
   {
-    role: "Trainee Data Engineer",
-    company: "Astro Sdn. Bhd.",
-    period: "2022 - 2023",
+    role: "Data Engineer",
+    company: "Astro · Kuala Lumpur, Malaysia",
+    period: "Aug 2022 - Sep 2023",
     description:
-      "Maintained legacy authentication ETL pipelines. Resolved data integrity issues in account purge logic. Generated user engagement reports for business stakeholders.",
+      "Data engineering for Malaysia's leading content & entertainment company — maintaining legacy pipelines while the replacement platform was being built.",
+    highlights: [
+      "Maintained ETL pipelines for the data warehouse, processing daily event data (Python/SQL)",
+      "Monitored data quality, integrity, and accuracy across reporting systems",
+      "Investigated data integrity issues and performed root-cause analysis on pipeline failures",
+      "Delivered periodic user activity reports and performed user access management on Redshift",
+      "Drove storage optimization by cleaning orphaned uploads and managing S3 storage efficiency",
+    ],
+    stack: [
+      { label: "Frameworks", items: ["Python", "Bash"] },
+      { label: "Cloud", items: ["AWS S3", "Redshift"] },
+      { label: "Others", items: ["SQL", "ETL", "Confluence"] },
+    ],
     logo: astroLogo,
     status: "Completed",
   },
@@ -511,6 +536,29 @@ export default function HomePage() {
                     <p className="text-muted-foreground text-sm leading-relaxed">
                       {"\u276F"} {item.description}
                     </p>
+                    {"highlights" in item && item.highlights && (
+                      <ul className="mt-3 space-y-1.5">
+                        {item.highlights.map((highlight) => (
+                          <li
+                            key={highlight}
+                            className="flex gap-2 text-muted-foreground text-sm leading-relaxed"
+                          >
+                            <span className="text-accent shrink-0 mt-0.5">{"\u2022"}</span>
+                            <span>{highlight}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {"stack" in item && item.stack && (
+                      <div className="mt-4 pt-4 border-t border-white/[0.05] space-y-1.5">
+                        {item.stack.map((group) => (
+                          <p key={group.label} className="text-xs leading-relaxed">
+                            <span className="text-foreground/80 font-medium">{group.label}:</span>{" "}
+                            <span className="text-muted-foreground">{group.items.join(", ")}</span>
+                          </p>
+                        ))}
+                      </div>
+                    )}
                     {"thesis" in item && item.thesis && (
                       <p className="text-muted-foreground text-sm mt-2">
                         <span className="text-foreground/80 font-medium">Thesis:</span> {item.thesis}
