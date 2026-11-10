@@ -58,6 +58,9 @@ const work = [
       "Built dashboard reports on QuickSight and automated dataset refreshes via the QuickSight API",
       "Achieved cost reduction through S3 lifecycle policies, storage optimization, and legacy service decommissioning",
       "Developed technical documentation and knowledge-transfer guides for pipeline architecture and operational runbooks",
+      "Participated in company-wide adoption of AiDE®, Valuelabs' enterprise agentic AI platform, using it daily for data engineering tasks and logging usage (prompts, tasks assisted, estimated time saved) for internal metrics",
+      "Conducted functional testing of AiDE's tools — code generation, documentation assistance, and prompt enhancement, documenting edge cases and limitations through internal bug-tracking channels",
+      "Served as informal AiDE champion, answering peer questions, sharing workflow tips, and demonstrating prompt patterns",
     ],
     stack: [
       { label: "Frameworks", items: ["PySpark", "Pandas", "Python", "Bash"] },
