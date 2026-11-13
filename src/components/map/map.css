@@ -1,0 +1,252 @@
+/* Leaflet chrome, themed with the site's CSS variables. */
+
+.leaflet-container {
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--background);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+.leaflet-container .leaflet-control-attribution {
+  padding: 2px 7px;
+  border-top-left-radius: 8px;
+  background: var(--glass-bg);
+  color: var(--muted-foreground);
+  font-size: 10px;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.leaflet-container .leaflet-control-attribution a {
+  color: var(--muted-foreground);
+  text-decoration: underline;
+}
+
+.leaflet-container .leaflet-control-attribution a:hover {
+  color: var(--accent);
+}
+
+.leaflet-container .leaflet-bar {
+  overflow: hidden;
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+  box-shadow: var(--glass-shadow);
+}
+
+.leaflet-container .leaflet-bar a {
+  border-bottom-color: var(--glass-border);
+  background: var(--glass-bg);
+  color: var(--foreground);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.leaflet-container .leaflet-bar a:hover {
+  background: var(--accent-15);
+  color: var(--foreground);
+}
+
+.leaflet-container .leaflet-bar a:first-child {
+  border-top-left-radius: 9px;
+  border-top-right-radius: 9px;
+}
+
+.leaflet-container .leaflet-bar a:last-child {
+  border-bottom-right-radius: 9px;
+  border-bottom-left-radius: 9px;
+}
+
+/* ─── Pins ─── */
+
+.workplace-marker {
+  border: 0;
+  background: transparent;
+}
+
+.wp-pin {
+  position: relative;
+  display: block;
+  width: 32px;
+  height: 40px;
+  filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.35));
+  transform-origin: 50% 100%;
+  transition: transform 160ms ease;
+}
+
+.workplace-marker:hover .wp-pin {
+  transform: translateY(-2px) scale(1.05);
+}
+
+.wp-pin svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.wp-pin-count {
+  position: absolute;
+  top: -6px;
+  right: -8px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border: 1px solid var(--background);
+  border-radius: 9999px;
+  background: var(--foreground);
+  color: var(--background);
+  font-family: var(--font-jetbrains), monospace;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 17px;
+  text-align: center;
+}
+
+/* ─── Clusters ─── */
+
+.wp-cluster {
+  border: 0;
+  background: transparent;
+}
+
+.wp-cluster-inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 2px solid var(--background);
+  border-radius: 9999px;
+  background: var(--accent);
+  color: var(--accent-foreground);
+  box-shadow:
+    0 0 0 5px var(--accent-15),
+    0 10px 22px rgba(0, 0, 0, 0.35);
+  font-family: var(--font-jetbrains), monospace;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* ─── Tooltip ─── */
+
+.wp-tooltip {
+  padding: 6px 10px;
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+  background: var(--glass-bg);
+  color: var(--foreground);
+  box-shadow: var(--glass-shadow);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  font-size: 12px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.wp-tooltip.leaflet-tooltip-top::before {
+  border-top-color: var(--glass-border);
+}
+
+.wp-tooltip.leaflet-tooltip-bottom::before {
+  border-bottom-color: var(--glass-border);
+}
+
+.wp-tooltip.leaflet-tooltip-left::before {
+  border-left-color: var(--glass-border);
+}
+
+.wp-tooltip.leaflet-tooltip-right::before {
+  border-right-color: var(--glass-border);
+}
+
+/* ─── Popup ─── */
+
+.wp-popup .leaflet-popup-content-wrapper {
+  border: 1px solid var(--glass-border);
+  border-radius: 14px;
+  background: var(--glass-bg);
+  color: var(--foreground);
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.wp-popup .leaflet-popup-content {
+  margin: 12px 14px;
+  line-height: 1.4;
+}
+
+.wp-popup .leaflet-popup-tip {
+  background: var(--glass-bg);
+  box-shadow: none;
+}
+
+.wp-popup .leaflet-popup-close-button {
+  color: var(--muted-foreground);
+}
+
+.wp-popup .leaflet-popup-close-button:hover {
+  color: var(--foreground);
+}
+
+/* ─── Transit overlay (remove this block with TransitOverlay.tsx) ─── */
+
+/* Casing is drawn in the page background colour, so the rail lines carry a
+   light halo on the light basemap and a dark one on the dark basemap without
+   any JavaScript theme switch. */
+.transit-line-casing {
+  stroke: var(--background);
+}
+
+.transit-station {
+  fill: var(--background);
+}
+
+.transit-station-interchange {
+  stroke: var(--foreground);
+}
+
+.transit-tooltip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 9px;
+  border: 1px solid var(--glass-border);
+  border-radius: 9px;
+  background: var(--glass-bg);
+  color: var(--foreground);
+  box-shadow: var(--glass-shadow);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.transit-tooltip.leaflet-tooltip-top::before {
+  border-top-color: var(--glass-border);
+}
+
+.transit-tooltip-name {
+  white-space: nowrap;
+}
+
+.transit-tooltip-refs {
+  display: inline-flex;
+  gap: 5px;
+}
+
+.transit-tooltip-ref {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--muted-foreground);
+  font-family: var(--font-jetbrains), monospace;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+}
+
+.transit-tooltip-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+}
