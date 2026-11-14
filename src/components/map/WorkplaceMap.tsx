@@ -13,6 +13,7 @@ import {
   useMapEvents,
 } from "react-leaflet";
 import MarkerClusterGroup from "react-leaflet-cluster";
+import { CheckCircle2 } from "lucide-react";
 import { workplaceMeta, type Building } from "@/lib/workplaces";
 import type { FocusRequest } from "./types";
 import { useThemeAttribute } from "./useThemeAttribute";
@@ -281,8 +282,20 @@ export default function WorkplaceMap({
                             : "border-transparent"
                         }`}
                       >
-                        <p className="text-sm font-semibold text-foreground">
+                        <p className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
                           {workplace.company}
+                          {workplace.verified && (
+                            <span
+                              title="Location checked"
+                              className="inline-flex items-center text-accent"
+                            >
+                              <CheckCircle2
+                                className="h-3.5 w-3.5"
+                                aria-hidden="true"
+                              />
+                              <span className="sr-only">Location checked</span>
+                            </span>
+                          )}
                         </p>
                         {meta && (
                           <p className="mt-0.5 text-xs text-muted-foreground">

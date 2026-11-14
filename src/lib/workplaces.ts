@@ -9,6 +9,8 @@ export type Workplace = {
   note?: string;
   /** City/state label shown in the list and popup. */
   area: string;
+  /** True once the pin has been checked by hand against the real building. */
+  verified?: boolean;
   lat: number;
   lng: number;
 };

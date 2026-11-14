@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Search, X } from "lucide-react";
+import { CheckCircle2, Search, X } from "lucide-react";
 import { matchesQuery, workplaceMeta, type Workplace } from "@/lib/workplaces";
 
 type WorkplaceListProps = {
@@ -93,6 +93,18 @@ export default function WorkplaceList({
                       <span className="truncate text-sm font-medium text-foreground">
                         {workplace.company}
                       </span>
+                      {workplace.verified && (
+                        <span
+                          title="Location checked"
+                          className="inline-flex shrink-0 items-center text-accent"
+                        >
+                          <CheckCircle2
+                            className="h-3.5 w-3.5"
+                            aria-hidden="true"
+                          />
+                          <span className="sr-only">Location checked</span>
+                        </span>
+                      )}
                     </span>
                     {meta && (
                       <span className="mt-0.5 block pl-3.5 text-xs text-muted-foreground">
