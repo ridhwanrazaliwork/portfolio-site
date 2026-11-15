@@ -11,6 +11,8 @@ export type Workplace = {
   area: string;
   /** True once the pin has been checked by hand against the real building. */
   verified?: boolean;
+  /** True once an application has been submitted for this role. */
+  applied?: boolean;
   lat: number;
   lng: number;
 };

@@ -117,8 +117,15 @@ export default function WorkplaceList({
                       </span>
                     )}
                   </span>
-                  <span className="shrink-0 rounded-full border border-[var(--glass-border)] px-2 py-0.5 text-[10px] text-muted-foreground">
-                    {workplace.area}
+                  <span className="flex shrink-0 flex-col items-end gap-1">
+                    <span className="rounded-full border border-[var(--glass-border)] px-2 py-0.5 text-[10px] text-muted-foreground">
+                      {workplace.area}
+                    </span>
+                    {workplace.applied && (
+                      <span className="rounded-full border border-accent/40 bg-accent/10 px-2 py-0.5 text-[10px] text-accent">
+                        Applied
+                      </span>
+                    )}
                   </span>
                 </button>
               </li>

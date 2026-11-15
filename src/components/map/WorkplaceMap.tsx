@@ -307,9 +307,16 @@ export default function WorkplaceMap({
                             {workplace.note}
                           </p>
                         )}
-                        <p className="mt-1 text-[10px] uppercase tracking-wide text-muted-foreground/70">
-                          {workplace.area}
-                        </p>
+                        <div className="mt-1 flex items-center gap-1.5">
+                          <p className="text-[10px] tracking-wide text-muted-foreground/70">
+                            {workplace.area}
+                          </p>
+                          {workplace.applied && (
+                            <span className="rounded-full border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-[10px] text-accent">
+                              Applied
+                            </span>
+                          )}
+                        </div>
                       </div>
                     );
                   })}
