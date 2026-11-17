@@ -393,7 +393,7 @@ export default function HomePage() {
                 </ContactPill>
                 <a
                   href="/resume.pdf"
-                  download
+                  download="RidhwanRazali_Resume_2026.pdf"
                   className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-accent/20 text-accent text-sm font-medium transition-all duration-200 hover:scale-105 active:scale-95 hover:bg-accent/30 hover:shadow-[0_0_15px_var(--accent-glow)]"
                   style={{ fontFamily: "var(--font-jetbrains)" }}
                 >
