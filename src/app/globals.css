@@ -22,6 +22,17 @@
   --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5), 0 0 20px oklch(95% 0.15 108 / 0.06);
   --shadow-glow: 0 0 20px oklch(95% 0.15 108 / 0.3);
   --expo-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Quiet surface scale — home page cards. Inverts with the theme. */
+  --fg-1: #f2f1ec;
+  --fg-2: #a8a6a0;
+  --fg-3: #6e6b66;
+  --surface-1: rgba(255, 255, 255, 0.03);
+  --surface-2: rgba(255, 255, 255, 0.06);
+  --hairline: rgba(255, 255, 255, 0.09);
+  --panel-bg: #0d0d0d;
+  --panel-border: rgba(255, 255, 255, 0.1);
+  --chip-bg: #1a1a1a;
 }
 
 @theme inline {
@@ -38,6 +49,12 @@
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
   --color-border: var(--border);
+  --color-fg-1: var(--fg-1);
+  --color-fg-2: var(--fg-2);
+  --color-fg-3: var(--fg-3);
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-hairline: var(--hairline);
   --font-sans: var(--font-poppins);
   --font-display: var(--font-poppins);
 }
@@ -122,6 +139,16 @@ body {
   --glass-border: rgba(0, 0, 0, 0.08);
   --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.08);
   --shadow-glow: 0 0 20px oklch(55% 0.0909 252.304 / 0.35);
+
+  --fg-1: #0a0a0a;
+  --fg-2: #55524b;
+  --fg-3: #8a8780;
+  --surface-1: rgba(0, 0, 0, 0.02);
+  --surface-2: rgba(0, 0, 0, 0.045);
+  --hairline: rgba(0, 0, 0, 0.08);
+  --panel-bg: #ffffff;
+  --panel-border: rgba(0, 0, 0, 0.1);
+  --chip-bg: #f2f1ec;
 }
 
 [data-theme="light"] .glass-button:hover {
@@ -221,6 +248,98 @@ html.vt-theme.dark::view-transition-new(root) {
 }
 .animate-marquee {
   animation: marquee 12s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-marquee,
+  .loader-dot,
+  #initial-loader {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+
+  html.vt-theme::view-transition-group(root),
+  html.vt-theme::view-transition-new(root) {
+    animation-duration: 0.01ms !important;
+  }
+}
+
+/* ─── Home: stars orbiting the hero portrait ─── */
+.photo-orbit {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  transform: scaleY(1.3);
+  --r-outer: 122px;
+  --r-inner: 96px;
+}
+
+.photo-orbit--back {
+  z-index: 0;
+}
+
+.photo-orbit--front {
+  z-index: 20;
+}
+
+@media (min-width: 768px) {
+  .photo-orbit {
+    transform: scaleY(1.36);
+    --r-outer: 138px;
+    --r-inner: 110px;
+  }
+}
+
+.photo-ring {
+  position: absolute;
+  inset: 0;
+  animation: photo-ring-spin var(--dur, 40s) linear infinite;
+}
+
+.photo-ring--reverse {
+  animation-direction: reverse;
+}
+
+.photo-star {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--size, 7px);
+  height: var(--size, 7px);
+  translate: -50% -50%;
+  transform: rotate(var(--a, 0deg)) translateX(var(--r, var(--r-outer)));
+  background: var(--accent);
+  opacity: var(--o, 0.6);
+  clip-path: polygon(
+    50% 0%,
+    61% 39%,
+    100% 50%,
+    61% 61%,
+    50% 100%,
+    39% 61%,
+    0% 50%,
+    39% 39%
+  );
+  filter: drop-shadow(0 0 5px color-mix(in oklab, var(--accent) 45%, transparent));
+}
+
+.photo-star--inner {
+  --r: var(--r-inner);
+}
+
+@keyframes photo-ring-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .photo-ring {
+    animation: none;
+  }
 }
 
 /* Blog code blocks render on a fixed dark background, so keep the text light

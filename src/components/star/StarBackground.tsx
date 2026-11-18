@@ -10,6 +10,8 @@ export default function StarBackground() {
   const [config, setConfig] = useState<EngineConfig>(DEFAULT_CONFIG);
   const configRef = useRef<EngineConfig>(DEFAULT_CONFIG);
   const [controllerOpen, setControllerOpen] = useState(false);
+  // The engine panel is a development tool, not portfolio content.
+  const showController = process.env.NODE_ENV !== "production";
 
   const handleConfigChange = useCallback((next: EngineConfig) => {
     setConfig(next);
@@ -19,7 +21,7 @@ export default function StarBackground() {
     <>
       <StarCanvas configRef={configRef} />
 
-      {!controllerOpen && (
+      {showController && !controllerOpen && (
         <button
           onClick={() => setControllerOpen(true)}
           className="fixed bottom-6 right-20 z-40 glass-button !p-0 w-10 h-10 !rounded-full flex items-center justify-center shadow-lg"
@@ -46,7 +48,7 @@ export default function StarBackground() {
         </button>
       )}
 
-      {controllerOpen && (
+      {showController && controllerOpen && (
         <EngineController
           configRef={configRef}
           config={config}

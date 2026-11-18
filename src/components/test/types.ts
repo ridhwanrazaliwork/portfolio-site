@@ -6,8 +6,6 @@ export interface EngineConfig {
   amplitude: number;
   waveSpeed: number;
   starSize: number;
-  colorSpeed: number;
-  colorState: number;
   patternStyle: PatternStyle;
   gridLayout: GridLayout;
   particlesEnabled: boolean;
@@ -18,16 +16,7 @@ export const DEFAULT_CONFIG: EngineConfig = {
   amplitude: 18,
   waveSpeed: 1.2,
   starSize: 8.0,
-  colorSpeed: 0.0012,
-  colorState: -1,
   patternStyle: "quantum",
   gridLayout: "staggered",
   particlesEnabled: true,
 };
-
-export const COLOR_NAMES = [
-  "Deep Indigo",
-  "Electric Blue",
-  "Light Green",
-  "Light Yellow",
-] as const;

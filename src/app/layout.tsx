@@ -5,6 +5,7 @@ import PageTransition from "@/components/site/PageTransition";
 import ViewTransitionWrapper from "@/components/site/ViewTransitionWrapper";
 import ChatWidget from "@/components/chat/ChatWidget";
 import StarBackground from "@/components/star/StarBackground";
+import { SITE_URL } from "@/lib/site";
 import "./globals.css";
 
 const poppins = localFont({
@@ -36,17 +37,51 @@ const jetbrains = localFont({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
   title: {
     default: "Ridhwan | Portfolio",
     template: "%s | Ridhwan",
   },
   description:
-    "Ridhwan — developer exploring data :).",
+    "Data engineer building AWS and GCP data platforms for analytics and AI. MSc Data Science at Universiti Malaya, based in Kuala Lumpur.",
+  keywords: [
+    "data engineer",
+    "analytics engineer",
+    "AWS",
+    "GCP",
+    "PySpark",
+    "data platform",
+    "Kuala Lumpur",
+    "Malaysia",
+  ],
   openGraph: {
     title: "Ridhwan | Portfolio",
     description:
-      "Ridhwan — developer exploring data :).",
+      "Data engineer building AWS and GCP data platforms for analytics and AI.",
     type: "website",
+    url: SITE_URL,
+  },
+};
+
+const personSchema = {
+  "@context": "https://schema.org",
+  "@type": "Person",
+  name: "Ridhwan Bin Razali",
+  jobTitle: "Data Engineer",
+  url: SITE_URL,
+  email: "mailto:ridhwanrazaliwork@gmail.com",
+  address: {
+    "@type": "PostalAddress",
+    addressLocality: "Kuala Lumpur",
+    addressCountry: "MY",
+  },
+  sameAs: [
+    "https://linkedin.com/in/ridhwan-bin-razali",
+    "https://github.com/ridhwanrazaliwork",
+  ],
+  alumniOf: {
+    "@type": "CollegeOrUniversity",
+    name: "Universiti Malaya",
   },
 };
 
@@ -74,6 +109,10 @@ export default function RootLayout({
         }} />
       </head>
       <body className="min-h-screen flex flex-col relative">
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(personSchema) }}
+        />
         <div id="initial-loader">
           <span style={{ fontFamily: "var(--font-poppins)", fontSize: "1.5rem", fontWeight: 600, color: "var(--foreground)" }}>
             Ridhwan

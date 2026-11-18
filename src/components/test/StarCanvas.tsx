@@ -3,14 +3,29 @@
 import { useEffect, useRef } from "react";
 import type { EngineConfig } from "./types";
 
-const colors = [
-  { r: 79, g: 70, b: 229, name: "Deep Indigo" },
-  { r: 6, g: 182, b: 212, name: "Electric Blue" },
-  { r: 34, g: 197, b: 94, name: "Light Green" },
-  { r: 234, g: 179, b: 8, name: "Light Yellow" },
-] as const;
-
-const violetColor = { r: 139, g: 92, b: 246 };
+/**
+ * Single-hue palettes. The canvas is rendered over a fixed backdrop, so the
+ * accent color is baked in per theme (rgb triplets keep the per-star fill
+ * string cheap). No hue cycling — depth is expressed with opacity only.
+ */
+const PALETTE = {
+  dark: {
+    rgb: "248, 246, 118", // oklch(95% 0.15 108) — neon yellow accent
+    background: "#050505",
+    glowNear: 0.04,
+    glowFar: 0.11,
+    starMin: 0.16,
+    starMax: 0.5,
+  },
+  light: {
+    rgb: "7, 53, 97", // oklch(32.6% 0.0909 252.3) — navy accent
+    background: "#ffffff",
+    glowNear: 0.035,
+    glowFar: 0.08,
+    starMin: 0.07,
+    starMax: 0.24,
+  },
+} as const;
 
 interface StarCanvasProps {
   configRef: React.MutableRefObject<EngineConfig>;
@@ -36,9 +51,6 @@ function drawFourPointStar(
 export default function StarCanvas({ configRef }: StarCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef<number>(0);
-  const timeRef = useRef(0);
-  const lastTimeRef = useRef(0);
-  const colorProgressRef = useRef(0);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -47,10 +59,11 @@ export default function StarCanvas({ configRef }: StarCanvasProps) {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const reduceQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    let reduceMotion = reduceQuery.matches;
     let time = 0;
     let lastTime = performance.now();
-    let colorProgress = 0;
-    const dpr = Math.min(window.devicePixelRatio || 1, 8);
 
     function resize() {
       const c = canvasRef.current;
@@ -63,98 +76,47 @@ export default function StarCanvas({ configRef }: StarCanvasProps) {
       cx.scale(dpr, dpr);
     }
 
-    resize();
-    window.addEventListener("resize", resize);
-
     function render(now: number) {
       const c = canvasRef.current;
       if (!c) return;
       const cx = c.getContext("2d");
       if (!cx) return;
 
-      const delta = (now - lastTime) / 1000 || 0;
-      if (delta < 0.025) {
-        rafRef.current = requestAnimationFrame(render);
-        return;
-      }
+      const delta = Math.min((now - lastTime) / 1000, 0.05);
       lastTime = now;
-      time += delta;
+      if (!reduceMotion) time += delta;
 
       const config = configRef.current;
       if (!config) return;
 
-      const isLight = document.documentElement.getAttribute("data-theme") === "light";
-
-      if (config.colorState === -1) {
-        colorProgress += delta * config.colorSpeed * 100;
-        if (colorProgress >= colors.length) {
-          colorProgress -= colors.length;
-        }
-      } else {
-        const target = config.colorState;
-        const current = colorProgress;
-        let diff = target - current;
-        if (Math.abs(diff) > colors.length / 2) {
-          if (diff > 0) diff -= colors.length;
-          else diff += colors.length;
-        }
-        colorProgress += diff * 0.1;
-        if (colorProgress < 0) colorProgress += colors.length;
-        if (colorProgress >= colors.length) colorProgress -= colors.length;
-      }
-
-      const idx = ((Math.floor(colorProgress) % colors.length) + colors.length) % colors.length;
-      const nextIdx = (idx + 1) % colors.length;
-      const colorFactor = colorProgress % 1;
-
-      const curR = Math.round(
-        colors[idx].r + (colors[nextIdx].r - colors[idx].r) * colorFactor,
-      );
-      const curG = Math.round(
-        colors[idx].g + (colors[nextIdx].g - colors[idx].g) * colorFactor,
-      );
-      const curB = Math.round(
-        colors[idx].b + (colors[nextIdx].b - colors[idx].b) * colorFactor,
-      );
+      const isLight =
+        document.documentElement.getAttribute("data-theme") === "light";
+      const palette = isLight ? PALETTE.light : PALETTE.dark;
 
       const w = c.width / dpr;
       const h = c.height / dpr;
+      const viewportRatio = w < 768 ? 0.2 : 0.35;
 
-      const viewportRatio = w < 768 ? 0.20 : 0.35;
+      cx.fillStyle = palette.background;
+      cx.fillRect(0, 0, w, h);
 
-      if (isLight) {
-        cx.fillStyle = "#ffffff";
-        cx.fillRect(0, 0, w, h);
+      // Single-hue glow: same color at three opacities instead of a second hue.
+      const wave = reduceMotion
+        ? 0
+        : Math.sin(time * config.waveSpeed) * (config.amplitude * 0.35);
+      const clamp = (v: number) => Math.min(1, Math.max(0, v));
+      const stop1 = clamp(viewportRatio + wave / h);
+      const stop2 = clamp(viewportRatio + 0.4 + wave / h);
 
-        const grad = cx.createLinearGradient(0, 0, 0, h);
-        grad.addColorStop(0, "#ffffff");
-        grad.addColorStop(viewportRatio, "#ffffff");
-        grad.addColorStop(viewportRatio + 0.50, `rgba(${curR}, ${curG}, ${curB}, 0.06)`);
-        grad.addColorStop(1, `rgba(${violetColor.r}, ${violetColor.g}, ${violetColor.b}, 0.08)`);
-        cx.fillStyle = grad;
-        cx.fillRect(0, 0, w, h);
-      } else {
-        cx.fillStyle = "#000000";
-        cx.fillRect(0, 0, w, h);
-
-        const globalWaveOffset = Math.sin(time * config.waveSpeed) * (config.amplitude * 0.35);
-        const stop1 = viewportRatio + globalWaveOffset / h;
-        const stop2 = (viewportRatio + 0.40) + globalWaveOffset / h;
-        const clamp = (v: number) => Math.min(1, Math.max(0, v));
-
-        const grad = cx.createLinearGradient(0, 0, 0, h);
-        grad.addColorStop(0, "#000000");
-        grad.addColorStop(clamp(stop1), "#000000");
-        grad.addColorStop(clamp(stop2), `rgba(${curR}, ${curG}, ${curB}, 0.22)`);
-        grad.addColorStop(1, `rgba(${violetColor.r}, ${violetColor.g}, ${violetColor.b}, 0.28)`);
-        cx.fillStyle = grad;
-        cx.fillRect(0, 0, w, h);
-      }
+      const grad = cx.createLinearGradient(0, 0, 0, h);
+      grad.addColorStop(0, palette.background);
+      grad.addColorStop(stop1, palette.background);
+      grad.addColorStop(stop2, `rgba(${palette.rgb}, ${palette.glowNear})`);
+      grad.addColorStop(1, `rgba(${palette.rgb}, ${palette.glowFar})`);
+      cx.fillStyle = grad;
+      cx.fillRect(0, 0, w, h);
 
       if (!config.particlesEnabled) {
-        timeRef.current = time;
-        lastTimeRef.current = lastTime;
-        colorProgressRef.current = colorProgress;
         rafRef.current = requestAnimationFrame(render);
         return;
       }
@@ -162,57 +124,48 @@ export default function StarCanvas({ configRef }: StarCanvasProps) {
       const isStaggered = config.gridLayout === "staggered";
       const step = isStaggered ? config.density / 2 : config.density;
       const startY = h * viewportRatio;
+      const alphaRange = palette.starMax - palette.starMin;
 
-        let colIndex = 0;
-        for (let x = -step; x <= w + step * 2; x += step) {
-          let rowIndex = 0;
-          for (let y = startY - step * 2; y <= h + step * 2; y += step) {
-            if (isStaggered && (colIndex + rowIndex) % 2 !== 0) {
-              rowIndex++;
-              continue;
-            }
+      let colIndex = 0;
+      for (let x = -step; x <= w + step * 2; x += step) {
+        let rowIndex = 0;
+        for (let y = startY - step * 2; y <= h + step * 2; y += step) {
+          if (isStaggered && (colIndex + rowIndex) % 2 !== 0) {
+            rowIndex++;
+            continue;
+          }
 
-            const waveX = x * 0.004;
-            const waveOffset =
-              Math.sin(waveX + time * config.waveSpeed) * config.amplitude;
-            const targetY = y + waveOffset;
+          const waveX = x * 0.004;
+          const waveOffset = reduceMotion
+            ? 0
+            : Math.sin(waveX + time * config.waveSpeed) * config.amplitude;
+          const targetY = y + waveOffset;
 
-            if (targetY < startY) {
-              rowIndex++;
-              continue;
-            }
+          if (targetY < startY) {
+            rowIndex++;
+            continue;
+          }
 
-            const depthFactor = (y - startY) / (h - startY);
-            const fade =
-              0.25 +
-              0.75 * Math.pow(Math.min(1, Math.max(0, depthFactor)), 0.8);
+          const depthFactor = Math.min(
+            1,
+            Math.max(0, (y - startY) / (h - startY)),
+          );
+          const fade = 0.25 + 0.75 * Math.pow(depthFactor, 0.8);
 
-            const starR = Math.round(
-              curR + (violetColor.r - curR) * depthFactor,
-            );
-            const starG = Math.round(
-              curG + (violetColor.g - curG) * depthFactor,
-            );
-            const starB = Math.round(
-              curB + (violetColor.b - curB) * depthFactor,
-            );
+          let patternMultiplier = 1.0;
+          const px = x * 0.02;
+          const py = targetY * 0.02;
 
-            cx.fillStyle = `rgba(${starR}, ${starG}, ${starB}, ${0.92 * Math.min(1, Math.max(0, depthFactor))})`;
-
-            let patternMultiplier = 1.0;
-            const px = x * 0.02;
-            const py = targetY * 0.02;
-
+          if (!reduceMotion) {
             switch (config.patternStyle) {
               case "quantum":
-                patternMultiplier =
-                  0.55 + 0.45 * Math.sin(px) * Math.sin(py + time);
+                patternMultiplier = 0.55 + 0.45 * Math.sin(px) * Math.sin(py + time);
                 break;
               case "ripple": {
-                const cx = w * 0.5;
-                const cy = h * 0.9;
-                const dx = x - cx;
-                const dy = targetY - cy;
+                const rx = w * 0.5;
+                const ry = h * 0.9;
+                const dx = x - rx;
+                const dy = targetY - ry;
                 const dist = Math.sqrt(dx * dx + dy * dy);
                 patternMultiplier =
                   0.5 + 0.5 * Math.sin(dist * 0.04 - time * 3.0);
@@ -228,39 +181,69 @@ export default function StarCanvas({ configRef }: StarCanvasProps) {
                     );
                 break;
               case "fluid":
-                patternMultiplier =
-                  0.5 + 0.5 * Math.sin(px - py + time * 1.5);
+                patternMultiplier = 0.5 + 0.5 * Math.sin(px - py + time * 1.5);
                 break;
             }
-
-            const pulse =
-              (0.7 +
-                0.3 * Math.sin(x * 0.008 - y * 0.005 + time * 1.5)) *
-              patternMultiplier;
-            const size = config.starSize * fade * pulse;
-
-            const waveXOffset =
-              Math.cos(y * 0.005 + time * 0.7) * (config.amplitude * 0.3);
-            const finalX = x + waveXOffset;
-
-            drawFourPointStar(cx, finalX, targetY, size);
-            rowIndex++;
           }
-          colIndex++;
-        }
 
-      timeRef.current = time;
-      lastTimeRef.current = lastTime;
-      colorProgressRef.current = colorProgress;
+          const pulse =
+            (0.7 +
+              0.3 *
+                Math.sin(x * 0.008 - y * 0.005 + time * 1.5)) *
+            patternMultiplier;
+          const size = config.starSize * fade * pulse;
+
+          const alpha =
+            palette.starMin + alphaRange * Math.pow(depthFactor, 0.8);
+          cx.fillStyle = `rgba(${palette.rgb}, ${Math.min(1, Math.max(0, alpha))})`;
+
+          const waveXOffset = reduceMotion
+            ? 0
+            : Math.cos(y * 0.005 + time * 0.7) * (config.amplitude * 0.3);
+
+          drawFourPointStar(cx, x + waveXOffset, targetY, size);
+          rowIndex++;
+        }
+        colIndex++;
+      }
 
       rafRef.current = requestAnimationFrame(render);
     }
 
-    rafRef.current = requestAnimationFrame(render);
+    let running = false;
+
+    function start() {
+      if (running) return;
+      running = true;
+      lastTime = performance.now();
+      rafRef.current = requestAnimationFrame(render);
+    }
+
+    function stop() {
+      running = false;
+      cancelAnimationFrame(rafRef.current);
+    }
+
+    function handleVisibility() {
+      if (document.hidden) stop();
+      else start();
+    }
+
+    function handleMotionPreference(event: MediaQueryListEvent) {
+      reduceMotion = event.matches;
+    }
+
+    resize();
+    start();
+    window.addEventListener("resize", resize);
+    document.addEventListener("visibilitychange", handleVisibility);
+    reduceQuery.addEventListener("change", handleMotionPreference);
 
     return () => {
+      stop();
       window.removeEventListener("resize", resize);
-      cancelAnimationFrame(rafRef.current);
+      document.removeEventListener("visibilitychange", handleVisibility);
+      reduceQuery.removeEventListener("change", handleMotionPreference);
     };
   }, [configRef]);
 
