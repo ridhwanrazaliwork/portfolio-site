@@ -13,7 +13,7 @@ import {
   useMapEvents,
 } from "react-leaflet";
 import MarkerClusterGroup from "react-leaflet-cluster";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCheck, CheckCircle2 } from "lucide-react";
 import { workplaceMeta, type Building } from "@/lib/workplaces";
 import type { FocusRequest } from "./types";
 import { useThemeAttribute } from "./useThemeAttribute";
@@ -57,15 +57,19 @@ type WorkplaceMapProps = {
   onPick: (lat: number, lng: number) => void;
 };
 
-function pinIcon(companyCount: number): L.DivIcon {
+function pinIcon(companyCount: number, applied: boolean): L.DivIcon {
   const badge =
     companyCount > 1
       ? `<span class="wp-pin-count">${companyCount}</span>`
       : "";
+  const fill = applied ? "var(--wp-pin-applied)" : "var(--accent)";
+  const dot = applied
+    ? "var(--wp-pin-applied-foreground)"
+    : "var(--accent-foreground)";
 
   return L.divIcon({
     className: "workplace-marker",
-    html: `<span class="wp-pin"><svg viewBox="0 0 32 40" aria-hidden="true"><path d="M16 1.5C8.3 1.5 2 7.8 2 15.5c0 10.2 14 23 14 23s14-12.8 14-23C30 7.8 23.7 1.5 16 1.5Z" fill="var(--accent)" stroke="var(--background)" stroke-width="2"/><circle cx="16" cy="15.5" r="5.5" fill="var(--accent-foreground)"/></svg>${badge}</span>`,
+    html: `<span class="wp-pin"><svg viewBox="0 0 32 40" aria-hidden="true"><path d="M16 1.5C8.3 1.5 2 7.8 2 15.5c0 10.2 14 23 14 23s14-12.8 14-23C30 7.8 23.7 1.5 16 1.5Z" fill="${fill}" stroke="var(--background)" stroke-width="2"/><circle cx="16" cy="15.5" r="5.5" fill="${dot}"/></svg>${badge}</span>`,
     iconSize: [32, 40],
     iconAnchor: [16, 40],
     popupAnchor: [0, -36],
@@ -188,7 +192,13 @@ export default function WorkplaceMap({
   const icons = useMemo(() => {
     const map = new Map<string, L.DivIcon>();
     for (const building of buildings) {
-      map.set(building.key, pinIcon(building.companies.length));
+      map.set(
+        building.key,
+        pinIcon(
+          building.companies.length,
+          building.workplaces.some((workplace) => workplace.applied),
+        ),
+      );
     }
     return map;
   }, [buildings]);
@@ -312,8 +322,16 @@ export default function WorkplaceMap({
                             {workplace.area}
                           </p>
                           {workplace.applied && (
-                            <span className="rounded-full border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-[10px] text-accent">
-                              Applied
+                            <span
+                              title="Application submitted"
+                              style={{ color: "var(--wp-pin-applied)" }}
+                              className="inline-flex items-center"
+                            >
+                              <CheckCheck
+                                className="h-3.5 w-3.5"
+                                aria-hidden="true"
+                              />
+                              <span className="sr-only">Applied</span>
                             </span>
                           )}
                         </div>

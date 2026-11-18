@@ -240,6 +240,7 @@ export const workplaces: Workplace[] = [
     lat: 3.1572378325815063,
     lng: 101.70971321462414,
     verified: true,
+    applied: true,
   },
   {
     id: "seek-pusat-bandaraya",

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CheckCircle2, Search, X } from "lucide-react";
+import { CheckCheck, CheckCircle2, Search, X } from "lucide-react";
 import { matchesQuery, workplaceMeta, type Workplace } from "@/lib/workplaces";
 
 type WorkplaceListProps = {
@@ -122,8 +122,13 @@ export default function WorkplaceList({
                       {workplace.area}
                     </span>
                     {workplace.applied && (
-                      <span className="rounded-full border border-accent/40 bg-accent/10 px-2 py-0.5 text-[10px] text-accent">
-                        Applied
+                      <span
+                        title="Application submitted"
+                        style={{ color: "var(--wp-pin-applied)" }}
+                        className="inline-flex items-center"
+                      >
+                        <CheckCheck className="h-3.5 w-3.5" aria-hidden="true" />
+                        <span className="sr-only">Applied</span>
                       </span>
                     )}
                   </span>

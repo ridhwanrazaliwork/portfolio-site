@@ -9,6 +9,8 @@
   --secondary-foreground: #ffffff;
   --accent: oklch(95% 0.15 108);
   --accent-foreground: #050505;
+  --wp-pin-applied: oklch(78% 0.17 155);
+  --wp-pin-applied-foreground: #052e1a;
   --accent-15: oklch(95% 0.15 108 / 0.15);
   --accent-30: oklch(95% 0.15 108 / 0.3);
   --accent-glow: oklch(95% 0.15 108 / 0.4);
@@ -127,6 +129,8 @@ body {
   --secondary-foreground: #0a0a0a;
   --accent: oklch(32.634% 0.0909 252.304);
   --accent-foreground: #ffffff;
+  --wp-pin-applied: oklch(55% 0.15 155);
+  --wp-pin-applied-foreground: #ffffff;
   --accent-15: oklch(55% 0.0909 252.304 / 0.2);
   --accent-30: oklch(55% 0.0909 252.304 / 0.35);
   --accent-glow: oklch(55% 0.0909 252.304 / 0.5);
