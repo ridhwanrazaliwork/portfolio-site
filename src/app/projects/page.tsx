@@ -17,52 +17,58 @@ export const metadata: Metadata = {
 
 const projects = [
   {
-    title: "ReadmeRag \u2014 RAG Chatbot for GitHub Projects",
+    title: "Google Cloud Data Management Project",
     description:
-      "A lightweight, zero-cost RAG (Retrieval-Augmented Generation) chatbot that answers questions about a developer's GitHub projects. It fetches README files from a GitHub profile, indexes them in a local vector database, and uses a free-tier LLM to answer questions.",
-    tech: ["embeddings", "gemini-api", "rag", "llm", "chromadb", "openrouter", "litellm"],
-    img: readmeragImg,
-    github: "https://github.com/ridhwanrazaliwork/readmerag",
+      "Led a team of 8 to architect an end-to-end GCP pipeline with PySpark and Hive on Dataproc, processing hotel reviews for BI insights — PySpark ran 40.3% faster on identical workloads, with 78% fewer missing values.",
+    tech: ["GCP", "Dataproc", "PySpark", "Hive", "Looker Studio"],
+    category: "Data Engineering",
+    img: gcpDataMgmtImg,
+    github: "https://github.com/ridhwanrazaliwork/google-cloud-data-management-project",
   },
   {
     title: "End-to-End GCP Big Data Healthcare Pipeline",
     description:
-      "Led a team of 5 to build a GCP data lifecycle framework for chronic disease prediction, routing raw medical data through BigQuery to Looker Studio.",
-    tech: ["GCP", "BigQuery", "Cloud Run", "Dataprep", "Looker Studio"],
+      "Led a team of 5 to build a serverless GCP data lifecycle framework for chronic disease prediction, holding average query latency under 0.26s at a 97.45% success rate.",
+    tech: ["GCP", "BigQuery", "Cloud Functions", "Dataprep", "Looker Studio"],
+    category: "Data Engineering",
     img: gcpHealthcareImg,
-    github: "https://github.com/ridhwanrazaliwork/Google-Cloud-Big-Data-Project",
+    github: "https://github.com/ridhwanrazaliwork/google-cloud-big-data-project",
+  },
+  {
+    title: "ReadmeRag \u2014 RAG Chatbot for GitHub Projects",
+    description:
+      "A lightweight, zero-cost RAG (Retrieval-Augmented Generation) chatbot that answers questions about a developer's GitHub projects. It fetches README files from a GitHub profile, indexes them in a local vector database, and uses a free-tier LLM to answer questions.",
+    tech: ["embeddings", "gemini-api", "rag", "llm", "chromadb", "openrouter", "litellm"],
+    category: "AI & ML",
+    img: readmeragImg,
+    github: "https://github.com/ridhwanrazaliwork/readmerag",
   },
   {
     title: "Agentic Medical AI Pipeline",
     description:
       "Web app using LangGraph state machines for medical data visualization and imputation, powered by Azure GPT-4 and local Qwen2.5.",
     tech: ["Python", "LangGraph", "Azure GPT-4.1", "Streamlit", "HuggingFace"],
+    category: "AI & ML",
     img: agenticMedicalImg,
-    github: "https://github.com/ridhwanrazaliwork/Agentic_medical_AI_pipeline",
-  },
-  {
-    title: "Google Cloud Data Management Project",
-    description:
-      "Led a team of 8 to architect an end-to-end GCP pipeline using PySpark and Hive on Dataproc to process hotel datasets for BI insights in Data Studio.",
-    tech: ["GCP", "Dataproc", "PySpark", "Hive", "Looker Studio"],
-    img: gcpDataMgmtImg,
-    github: "https://github.com/ridhwanrazaliwork/Google_Cloud_Data_Management_Project",
+    github: "https://github.com/ridhwanrazaliwork/agentic-medical-ai-pipeline",
   },
   {
     title: "Low-Light Object Detection Pipeline WebApp",
     description:
-      "My capstone project: Web app with a sequential preprocessing pipeline (denoising + enhancement) and custom-tuned YOLO, achieving SOTA mAP50 on the ExDark dataset.",
+      "MSc final-year project: a preprocessing pipeline (denoising + enhancement) with custom-tuned YOLO on the ExDark benchmark, delivering a 19.9% performance boost over baseline.",
     tech: ["Python", "YOLO", "Computer Vision", "Flask/Streamlit"],
+    category: "AI & ML",
     img: lowlightYoloImg,
-    github: "https://github.com/ridhwanrazaliwork/LowLight-Object-Detection-Pipeline-WebApp",
+    github: "https://github.com/ridhwanrazaliwork/fyp-lowLight-object-detection-pipeline-webapp",
   },
   {
-    title: "DermAI — Skin Lesion Classification",
+    title: "DermAI \u2014 Skin Lesion Classification",
     description:
       "Flask-based web app for classifying skin lesions using ML models. Supports CNN, EfficientNet, and CNN+Metadata models. Upload images, choose models, and view predictions with confidence scores.",
     tech: ["Python", "Flask", "PyTorch", "Docker", "Google Cloud"],
-    img: readmeragImg,  // TODO: replace with actual DermAI image
-    github: "https://github.com/ridhwanrazaliwork/DermAI",
+    category: "AI & ML",
+    img: null,
+    github: "https://github.com/ridhwanrazaliwork/skinlesionclassificationdermai",
   },
 ];
 
@@ -88,7 +94,7 @@ export default function ProjectsPage() {
           Projects
         </h1>
         <p className="text-muted-foreground text-center max-w-xl mx-auto mb-14 text-base md:text-lg">
-          A selection of projects I have worked on.
+          Data engineering work and applied AI/ML projects.
         </p>
 
         <div className="grid md:grid-cols-3 gap-7">
@@ -98,19 +104,36 @@ export default function ProjectsPage() {
               className="group glass-panel rounded-2xl p-7 flex flex-col h-full transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_0_30px_var(--accent-glow)] hover:border-accent/30"
             >
               <div className="w-full aspect-video rounded-xl overflow-hidden relative bg-neutral-900 shadow-md">
-                <Image
-                  src={project.img}
-                  alt={project.title}
-                  width={500}
-                  height={281}
-                  priority={i < 2}
-                  sizes="(max-width: 768px) calc(100vw - 2rem), 500px"
-                  className="w-full h-full object-cover object-top transition-transform duration-500 group-hover:scale-105"
-                />
+                {project.img ? (
+                  <Image
+                    src={project.img}
+                    alt={project.title}
+                    width={500}
+                    height={281}
+                    priority={i < 2}
+                    sizes="(max-width: 768px) calc(100vw - 2rem), 500px"
+                    className="w-full h-full object-cover object-top transition-transform duration-500 group-hover:scale-105"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <span
+                      className="text-5xl font-bold text-foreground/25"
+                      style={{ fontFamily: "var(--font-poppins)" }}
+                    >
+                      DA
+                    </span>
+                  </div>
+                )}
               </div>
               <div className="flex flex-col flex-1 mt-4">
+                <span
+                  className="text-[10px] font-medium uppercase tracking-wider text-accent"
+                  style={{ fontFamily: "var(--font-jetbrains)" }}
+                >
+                  {project.category}
+                </span>
                 <h3
-                  className="text-lg font-semibold text-foreground"
+                  className="text-lg font-semibold text-foreground mt-1"
                   style={{ fontFamily: "var(--font-poppins)" }}
                 >
                   {project.title}

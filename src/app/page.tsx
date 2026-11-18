@@ -9,8 +9,8 @@ import umLogo from "@/images/home/um-logo.webp";
 import astroLogo from "@/images/home/astro.webp";
 import valuelabsLogo from "@/images/home/valuelabs.webp";
 import partTimeLogo from "@/images/home/part-time.webp";
-import readmeragImg from "@/images/projects/ReadmeRag.webp";
 import gcpDataMgmtImg from "@/images/projects/gcp-data-mgmt.webp";
+import gcpHealthcareImg from "@/images/projects/gcp-healthcare.webp";
 
 const education = [
   {
@@ -52,15 +52,13 @@ const work = [
     description:
       "Data engineering for a major telecom & media client — migrating legacy systems to a modern serverless AWS data platform.",
     highlights: [
-      "Designed and implemented ETL pipelines in AWS (Redshift, S3, Glue, Lambda, Step Functions, DynamoDB) to optimize daily batch data ingestion (PySpark/Python)",
-      "Designed loading patterns (upsert, incremental, truncate) driven by metadata configuration, with table-level reprocessing support",
-      "Ingested data from internal databases and external sources (APIs, event notifications, batch files) into the centralized data lake and warehouse",
-      "Built dashboard reports on QuickSight and automated dataset refreshes via the QuickSight API",
-      "Achieved cost reduction through S3 lifecycle policies, storage optimization, and legacy service decommissioning",
-      "Developed technical documentation and knowledge-transfer guides for pipeline architecture and operational runbooks",
-      "Participated in company-wide adoption of AiDE®, Valuelabs' enterprise agentic AI platform, using it daily for data engineering tasks and logging usage (prompts, tasks assisted, estimated time saved) for internal metrics",
-      "Conducted functional testing of AiDE's tools — code generation, documentation assistance, and prompt enhancement, documenting edge cases and limitations through internal bug-tracking channels",
-      "Served as informal AiDE champion, answering peer questions, sharing workflow tips, and demonstrating prompt patterns",
+      "Designed and implemented daily batch ETL pipelines in AWS (S3, Glue, Lambda, Step Functions, Redshift) loading relational data into a centralised Parquet lake and warehouse (PySpark/Python)",
+      "Orchestrated end-to-end loads with metadata-driven patterns (upsert, incremental, truncate) and table-level reprocessing, with documented data lineage",
+      "Isolated PII in raw landing zones and applied governance rules before data reached the shared lake",
+      "Migrated legacy ingestion to a serverless AWS architecture, cutting monthly cloud cost 60% with validated output parity",
+      "Automated QuickSight dashboards and dataset refreshes via API for business stakeholders",
+      "Adopted and championed Valuelabs' agentic AI platform (AiDE) for pipeline documentation and code assistance, feeding usage feedback back to its product team",
+      "Authored engineering documentation and ran knowledge-transfer sessions for handover across engineering and analytics teams",
     ],
     stack: [
       { label: "Frameworks", items: ["PySpark", "Pandas", "Python", "Bash"] },
@@ -95,20 +93,20 @@ const work = [
 
 const featuredProjects = [
   {
-    title: "ReadmeRag — RAG Chatbot for GitHub Projects",
-    description:
-      "A RAG chatbot that lets anyone ask questions about my work by pulling from my GitHub READMEs. Instead of a static portfolio, visitors can query my projects, skills, and experience naturally.",
-    tech: ["embeddings", "gemini-api", "rag", "llm", "chromadb", "openrouter", "litellm"],
-    img: readmeragImg,
-    github: "https://github.com/ridhwanrazaliwork/readmerag",
-  },
-  {
     title: "Google Cloud Data Management Project",
     description:
-      "Led a team of 8 to architect an end-to-end data pipeline on GCP processing a hotel review dataset for business intelligence insights. Used PySpark and Hive for distributed processing on Dataproc.",
+      "Led a team of 8 to build an end-to-end pipeline on GCP processing hotel reviews with PySpark and Hive on Dataproc — PySpark ran 40.3% faster on identical workloads, with 78% fewer missing values and Looker Studio dashboards for reporting.",
     tech: ["GCP", "Dataproc", "PySpark", "Hive", "Looker Studio"],
     img: gcpDataMgmtImg,
-    github: "https://github.com/ridhwanrazaliwork/Google_Cloud_Data_Management_Project",
+    github: "https://github.com/ridhwanrazaliwork/google-cloud-data-management-project",
+  },
+  {
+    title: "End-to-End GCP Big Data Healthcare Pipeline",
+    description:
+      "Led a team of 5 to build a serverless GCP pipeline for chronic disease prediction, removing ingestion and latency bottlenecks — average query latency under 0.26s at a 97.45% success rate, surfaced in Looker Studio.",
+    tech: ["GCP", "BigQuery", "Cloud Functions", "Dataprep", "Looker Studio"],
+    img: gcpHealthcareImg,
+    github: "https://github.com/ridhwanrazaliwork/google-cloud-big-data-project",
   },
 ];
 
@@ -358,7 +356,7 @@ export default function HomePage() {
                 Hi, I&apos;m <span className="text-accent">Ridhwan</span>
               </h1>
               <p className="mt-2 text-lg md:text-xl text-muted-foreground">
-                Data Engineer with 2 years experience, finishing MSc in Data Science. Looking for data or ML/AI engineering roles.
+                Data Engineer — 2+ years building AWS/GCP data platforms. MSc Data Science. I build the data foundations behind analytics and AI.
               </p>
               <p className="mt-1 text-sm text-muted-foreground" style={{ fontFamily: "var(--font-jetbrains)" }}>
                 {age}&nbsp;years old &middot; Kuala Lumpur, MY
@@ -370,7 +368,7 @@ export default function HomePage() {
                 <span className="text-accent shrink-0"><BookOpen size={14} /></span>
                 <div className="overflow-hidden whitespace-nowrap">
                   <span className="inline-block animate-marquee">
-                    2x Microsoft Fabric Certified & 1x AWS Certified &nbsp;&nbsp;·&nbsp;&nbsp; 2x Microsoft Fabric Certified & 1x AWS Certified
+                    DP-700 · DP-600 · AWS Certified Cloud Practitioner &nbsp;&nbsp;·&nbsp;&nbsp; DP-700 · DP-600 · AWS Certified Cloud Practitioner
                   </span>
                 </div>
               </div>
@@ -411,8 +409,8 @@ export default function HomePage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 ">
             <StatChip icon={<MapPin size={16} />} label="Location" value="Kuala Lumpur, MY" />
             <StatChip icon={<GraduationCap size={16} />} label="Education" value="Universiti Malaya" />
-            <StatChip icon={<Briefcase size={16} />} label="Current Role" value="Postgraduate Student" />
-            <StatChip icon={<Circle size={14} fill="var(--accent)" stroke="var(--accent)" />} label="Availability" value="Open to new roles" />
+            <StatChip icon={<Briefcase size={16} />} label="Current Role" value="Data Engineer · MSc Data Science" />
+            <StatChip icon={<Circle size={14} fill="var(--accent)" stroke="var(--accent)" />} label="Availability" value="Open to Data Engineering roles" />
           </div>
         </div>
       </section>
